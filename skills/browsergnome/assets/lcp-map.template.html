@@ -136,6 +136,10 @@
     <div class="eyebrow" style="margin-top:14px" id="throttledLabelEl">throttled reference</div>
     <div class="stats" id="throttledStats"></div>
   </div>
+  <div class="crux" id="cruxEl" style="display:none">
+    <div class="eyebrow" style="margin-top:14px" id="cruxLabelEl">field data — real users</div>
+    <div class="stats" id="cruxStats"></div>
+  </div>
   <div class="degraded" id="degradedEl" style="display:none">no bundler stats — chunk-only view, no module tier</div>
 </header>
 
@@ -149,6 +153,12 @@
   <div class="leg-row">
     <span class="leg-item"><span class="leg-dot" style="background:#fff;opacity:1"></span>measured</span>
     <span class="leg-item"><span class="leg-dot" style="background:#fff;opacity:0.4"></span>apportioned (estimate)</span>
+  </div>
+  <div class="leg-row" id="cruxLegendRow" style="display:none">
+    <span class="leg-item"><span class="leg-dot" style="background:#34d399"></span>good</span>
+    <span class="leg-item"><span class="leg-dot" style="background:#fb923c"></span>needs improvement</span>
+    <span class="leg-item"><span class="leg-dot" style="background:#f87171"></span>poor</span>
+    <span class="leg-sep">CrUX rating</span>
   </div>
 </div>
 
@@ -174,6 +184,12 @@
   const fmtSec = (v) => v == null ? '—' : (v / 1000).toFixed(1) + 's';
   const statsRow = (entries) => entries.map(([l, n]) =>
     `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('');
+  // Same as statsRow, plus an optional CrUX good/ni/poor rating that colors the
+  // number — same rating→color mapping as #cruxLegendRow, kept off the node
+  // classes' palette (amber/blue/teal) so a rating dot never means two things.
+  const RATING_COLOR = { good: '#34d399', ni: '#fb923c', poor: '#f87171' };
+  const statsRowRated = (entries) => entries.map(([l, n, rating]) =>
+    `<div class="stat"><div class="n"${rating ? ` style="color:${RATING_COLOR[rating]}"` : ''}>${n}</div><div class="l">${l}</div></div>`).join('');
 
   document.getElementById('urlEl').textContent = DATA.meta.url || '';
   document.getElementById('lcpEl').textContent = DATA.meta.lcpMs != null ? Math.round(DATA.meta.lcpMs) + 'ms' : '—';
@@ -228,6 +244,22 @@
       ['tbt', throttled.tbtMs != null ? Math.round(throttled.tbtMs) + 'ms' : '—'],
     ]);
     document.getElementById('throttledEl').style.display = 'block';
+  }
+
+  const crux = DATA.meta.crux;
+  if (crux) {
+    const m = crux.metrics;
+    document.getElementById('cruxLabelEl').textContent =
+      `field data — real users (${crux.source === 'psi' ? 'via PageSpeed Insights' : 'CrUX'}, origin)`;
+    document.getElementById('cruxStats').innerHTML = statsRowRated([
+      ['fcp', fmtSec(m.fcp.p75), m.fcp.rating],
+      ['lcp', fmtSec(m.lcp.p75), m.lcp.rating],
+      ['cls', m.cls.p75 != null ? m.cls.p75.toFixed(2) : '—', m.cls.rating],
+      ['inp', m.inp.p75 != null ? Math.round(m.inp.p75) + 'ms' : '—', m.inp.rating],
+      ['ttfb', fmtSec(m.ttfb.p75), m.ttfb.rating],
+    ]);
+    document.getElementById('cruxEl').style.display = 'block';
+    document.getElementById('cruxLegendRow').style.display = 'flex';
   }
 
   const METHOD = {

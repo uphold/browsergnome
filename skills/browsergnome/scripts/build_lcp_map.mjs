@@ -6,16 +6,25 @@
  * confidence, ...} nodes with no render hints, so this script adds val/color
  * (same job perf_scan.mjs does for build_perf_map.mjs).
  *
+ * Also resolves the target's production URL and, if found, fetches real-user
+ * CrUX field data (crux.mjs) as the map's third readout tier, alongside the
+ * lab (unthrottled) and throttled-reference numbers. This is the one network
+ * call in the whole toolchain — everything else is offline trace parsing —
+ * and it never blocks the build: any failure (no URL, offline, no field data
+ * for a low-traffic origin) just omits the tier.
+ *
  * Usage:
  *   node lcp_attribution.mjs <trace.json[.gz]> [bundle-stats.json[.gz]] > attribution.json
- *   node build_lcp_map.mjs attribution.json [--out lcp-map.html] [--open]
+ *   node build_lcp_map.mjs attribution.json [--out lcp-map.html] [--open] [--prod-url <url>]
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import { fileURLToPath } from 'node:url';
+import readline from 'node:readline/promises';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFile } from 'node:child_process';
+import { getFieldData } from './crux.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS = path.resolve(__dirname, '..', 'assets');
@@ -53,16 +62,48 @@ function toRenderNode(n, i) {
   };
 }
 
-function main() {
+function readJsonSafe(p) {
+  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; }
+}
+
+/**
+ * Production URL, cheapest-first: explicit flag, then `.bgn/config.json`'s
+ * `prodUrl` (set by Doctor's light repo find, or by hand), then the one
+ * cross-repo npm convention (`package.json`'s `homepage`). No repo scanning
+ * happens here — that's Doctor's job, once, at setup time; this is just the
+ * read.
+ */
+export function resolveProdUrl({ flagUrl, config, packageJson }) {
+  return flagUrl || config?.prodUrl || packageJson?.homepage || null;
+}
+
+/**
+ * Interactive last resort: only when nothing above resolved a URL and stdout
+ * is an actual terminal (never in CI/non-interactive builds). Persists the
+ * answer to `.bgn/config.json` so it's asked once, not every build.
+ */
+async function promptForProdUrl(configPath, config) {
+  if (!process.stdin.isTTY) return null;
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const answer = (await rl.question('Production URL for CrUX field data (blank to skip): ')).trim();
+  rl.close();
+  if (!answer) return null;
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
+  fs.writeFileSync(configPath, JSON.stringify({ ...(config || {}), prodUrl: answer }, null, 2) + '\n');
+  return answer;
+}
+
+async function main() {
   const args = process.argv.slice(2);
   const open = args.includes('--open');
   const outIdx = args.indexOf('--out');
   const outFile = outIdx >= 0 ? args[outIdx + 1] : 'lcp-map.html';
-  const outValIdx = outIdx >= 0 ? outIdx + 1 : -1;
-  const inFile = args.find((a, i) => !a.startsWith('--') && i !== outValIdx);
+  const prodUrlIdx = args.indexOf('--prod-url');
+  const skip = new Set([outIdx >= 0 ? outIdx + 1 : -1, prodUrlIdx >= 0 ? prodUrlIdx + 1 : -1]);
+  const inFile = args.find((a, i) => !a.startsWith('--') && !skip.has(i));
 
   if (!inFile) {
-    console.error('usage: node build_lcp_map.mjs <attribution.json> [--out lcp-map.html] [--open]');
+    console.error('usage: node build_lcp_map.mjs <attribution.json> [--out lcp-map.html] [--open] [--prod-url <url>]');
     process.exit(1);
   }
   for (const [p, what] of [[inFile, 'attribution data'], [TEMPLATE, 'template'], [LIB, 'vendored lib']]) {
@@ -75,6 +116,13 @@ function main() {
     process.exit(1);
   }
 
+  const configPath = path.join(process.cwd(), '.bgn', 'config.json');
+  const config = readJsonSafe(configPath);
+  const packageJson = readJsonSafe(path.join(process.cwd(), 'package.json'));
+  const prodUrl = resolveProdUrl({ flagUrl: prodUrlIdx >= 0 ? args[prodUrlIdx + 1] : null, config, packageJson })
+    || await promptForProdUrl(configPath, config);
+  const crux = prodUrl ? await getFieldData(prodUrl, { apiKey: config?.cruxApiKey }) : null;
+
   const nodes = (attribution.nodes || []).map(toRenderNode);
   const payload = {
     meta: {
@@ -84,6 +132,7 @@ function main() {
       phases: attribution.phases ?? null,
       transport: attribution.transport ?? null,
       throttled: attribution.throttled ?? null,
+      crux,
       degraded: attribution.degraded,
       counts: {
         network: nodes.filter((n) => n.class === 'network').length,
@@ -125,6 +174,14 @@ function main() {
     console.log(`  throttled reference (${t.label}): FCP ${t.fcpMs != null ? Math.round(t.fcpMs) + 'ms' : '?'} ·` +
       ` LCP ${t.lcpMs != null ? Math.round(t.lcpMs) + 'ms' : '?'} · TBT ${t.tbtMs != null ? Math.round(t.tbtMs) + 'ms' : '?'}`);
   }
+  if (payload.meta.crux) {
+    const m = payload.meta.crux.metrics;
+    const src = payload.meta.crux.source === 'psi' ? 'via PageSpeed Insights, keyless' : 'CrUX API';
+    console.log(`  field data (${src}, real users, origin): LCP ${m.lcp.p75 != null ? Math.round(m.lcp.p75) + 'ms' : '?'} ·` +
+      ` CLS ${m.cls.p75 != null ? m.cls.p75.toFixed(2) : '?'} · INP ${m.inp.p75 != null ? Math.round(m.inp.p75) + 'ms' : '?'}`);
+  } else if (prodUrl) {
+    console.log(`  no CrUX field data for ${prodUrl} (low-traffic origin, or offline) — field-data tier omitted`);
+  }
   console.log(`  open with:  open ${outAbs}\n`);
 
   if (open) {
@@ -135,4 +192,9 @@ function main() {
   }
 }
 
-main();
+// Guarded like lcp_attribution.mjs/trace_metrics.mjs's identical checks — lets
+// resolveProdUrl/getFieldData be imported by another script (e.g. a test)
+// without also triggering a CLI run as a side effect.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => { console.error(err); process.exit(1); });
+}

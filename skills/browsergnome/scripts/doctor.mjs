@@ -170,6 +170,8 @@ const DEFAULT_CONFIG = (axes) => ({
     networkConditions: null,  // null | 'Offline' | 'Slow 3G' | 'Fast 3G' | 'Slow 4G' | 'Fast 4G'
     viewport: '1280x720x1',
   },
+  prodUrl: null,     // production origin for the LCP Attribution Map's CrUX field-data tier — auto-detected/prompted at build time if unset
+  cruxApiKey: null,  // optional Google Cloud API key for the canonical CrUX API; omit to use keyless PageSpeed Insights (same data, no key)
 });
 
 const GITIGNORE_CONTENT = `# browsergnome — generated run artifacts (not committed with the app)
