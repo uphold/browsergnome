@@ -1,0 +1,35 @@
+{
+  "name": "browsergnome",
+  "description": "The autonomous JS web performance engineer, as a self-installable Claude Code plugin marketplace.",
+  "owner": {
+    "name": "Xavier",
+    "email": "xavi-999@users.noreply.github.com"
+  },
+  "plugins": [
+    {
+      "name": "browsergnome",
+      "source": "./",
+      "version": "0.1.0",
+      "description": "The autonomous JS web performance engineer — one propose -> measure -> keep/revert loop over chrome-devtools-mcp, with an LCP Attribution Map and a per-repo performance memory.",
+      "author": {
+        "name": "Xavier",
+        "email": "xavi-999@users.noreply.github.com"
+      },
+      "license": "MIT",
+      "keywords": [
+        "web",
+        "performance",
+        "chrome-devtools",
+        "lcp",
+        "claude-code",
+        "plugin"
+      ],
+      "category": "performance",
+      "tags": [
+        "web",
+        "performance",
+        "mcp"
+      ]
+    }
+  ]
+}

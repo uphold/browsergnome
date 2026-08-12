@@ -1,0 +1,87 @@
+# CI covers only the offline chain:
+#   - all self-tests (stats / playbook / doctor / trace / bundle / lcp-attribution)
+#   - offline smoke chain: lcp_attribution → build_lcp_map, build_run_report from the sample fixture
+#   - JSON validation of all plugin manifests
+#   - official plugin manifest validation (claude plugin validate --strict)
+#
+# The live path (chrome-devtools-mcp / real browser / MCP runtime) cannot be CI-tested
+# because it requires a running Chrome instance and an active Claude Code session.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: All self-tests
+        run: npm test
+
+      - name: Offline smoke chain — lcp_attribution
+        run: node skills/browsergnome/scripts/lcp_attribution.mjs skills/browsergnome/assets/trace.render-blocking-sample.json.gz > /tmp/attribution.json
+
+      - name: Offline smoke chain — build_lcp_map
+        run: node skills/browsergnome/scripts/build_lcp_map.mjs /tmp/attribution.json --out /tmp/lcp-map.html
+
+      - name: Offline smoke chain — build_run_report
+        run: node skills/browsergnome/scripts/build_run_report.mjs skills/browsergnome/assets/run-state.sample.json --out /tmp/report.html
+
+      # Assert each output file exists and is non-empty.
+      - name: Assert smoke-chain outputs are non-empty
+        run: |
+          test -s /tmp/attribution.json || (echo "attribution.json is missing or empty" && exit 1)
+          test -s /tmp/lcp-map.html     || (echo "lcp-map.html is missing or empty"      && exit 1)
+          test -s /tmp/report.html      || (echo "report.html is missing or empty"       && exit 1)
+
+      - name: Validate JSON files
+        run: |
+          node -e "
+            const fs = require('fs');
+            const files = [
+              '.claude-plugin/plugin.json',
+              '.claude-plugin/marketplace.json',
+              '.mcp.json',
+              'package.json',
+              'skills/browsergnome/assets/run-state.sample.json',
+            ];
+            let ok = true;
+            for (const f of files) {
+              try {
+                JSON.parse(fs.readFileSync(f, 'utf8'));
+                console.log('  ok  ' + f);
+              } catch (e) {
+                console.error('FAIL  ' + f + ': ' + e.message);
+                ok = false;
+              }
+            }
+            if (!ok) process.exit(1);
+          "
+
+      # Static manifest validation via the official Claude Code CLI.
+      # No auth needed — `plugin validate` is offline. --strict treats
+      # warnings (e.g. a missing marketplace description) as errors.
+      - name: Official plugin validation (strict)
+        run: |
+          npm install -g @anthropic-ai/claude-code@2.1.226
+          claude plugin validate . --strict

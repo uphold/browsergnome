@@ -1,0 +1,134 @@
+[
+  {
+    "preset": "first-load",
+    "guide": "lcp",
+    "hypothesis": "Post-build critical CSS (critters) for App Router",
+    "direction": "lower",
+    "unit": "ms",
+    "kept": 2,
+    "tried": 2,
+    "effects": [874, 306],
+    "source": "seeded"
+  },
+  {
+    "preset": "interaction",
+    "guide": "inp",
+    "hypothesis": "Deferred content-visibility release via requestIdleCallback",
+    "direction": "higher",
+    "unit": "fps",
+    "kept": 1,
+    "tried": 1,
+    "effects": [27],
+    "source": "seeded"
+  },
+  {
+    "preset": "first-load",
+    "guide": "images-media",
+    "hypothesis": "Lossless WebP for PNG client logos",
+    "direction": "lower",
+    "unit": "kB",
+    "kept": 1,
+    "tried": 1,
+    "effects": [133],
+    "source": "seeded"
+  },
+  {
+    "preset": "first-load",
+    "guide": "fonts",
+    "hypothesis": "next/font preload:false on below-fold fonts",
+    "direction": "lower",
+    "unit": "requests",
+    "kept": 1,
+    "tried": 1,
+    "effects": [3],
+    "source": "seeded"
+  },
+  {
+    "preset": "first-load",
+    "guide": "caching",
+    "hypothesis": "No dynamic APIs in the root layout",
+    "direction": "higher",
+    "unit": "prerendered pages",
+    "kept": 1,
+    "tried": 1,
+    "effects": [22],
+    "source": "seeded"
+  },
+  {
+    "preset": "first-load",
+    "guide": "images-media",
+    "hypothesis": "`fill` images need `sizes`",
+    "direction": "lower",
+    "unit": "kB",
+    "kept": 0,
+    "tried": 1,
+    "effects": [],
+    "source": "seeded"
+  },
+  {
+    "preset": "first-load",
+    "guide": "lcp",
+    "hypothesis": "<link rel=preload as=image> for the LCP image",
+    "direction": "lower",
+    "unit": "ms",
+    "kept": 0,
+    "tried": 1,
+    "effects": [],
+    "source": "seeded"
+  },
+  {
+    "preset": "bundle-size",
+    "guide": "bundle",
+    "hypothesis": "experimental.optimizeCss (App Router)",
+    "direction": "lower",
+    "unit": "ms",
+    "kept": 0,
+    "tried": 1,
+    "effects": [],
+    "source": "seeded"
+  },
+  {
+    "preset": "interaction",
+    "guide": "inp",
+    "hypothesis": "Off-screen parallax/transform gating",
+    "direction": "higher",
+    "unit": "fps",
+    "kept": 0,
+    "tried": 1,
+    "effects": [],
+    "source": "seeded"
+  },
+  {
+    "preset": "first-load",
+    "guide": "third-party",
+    "hypothesis": "Speculation Rules API",
+    "direction": "lower",
+    "unit": "ms",
+    "kept": 0,
+    "tried": 0,
+    "effects": [],
+    "source": "seeded"
+  },
+  {
+    "preset": "first-load",
+    "guide": "caching",
+    "hypothesis": "bfcache eligibility",
+    "direction": "lower",
+    "unit": "ms",
+    "kept": 0,
+    "tried": 0,
+    "effects": [],
+    "source": "seeded"
+  },
+  {
+    "preset": "first-load",
+    "guide": "third-party",
+    "hypothesis": "dns-prefetch for non-critical third-party origins",
+    "direction": "lower",
+    "unit": "ms",
+    "kept": 0,
+    "tried": 0,
+    "effects": [],
+    "source": "seeded"
+  }
+]

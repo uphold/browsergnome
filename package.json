@@ -1,0 +1,34 @@
+{
+  "name": "browsergnome",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "The autonomous JS web performance engineer. Propose → measure → keep/revert loop, LCP Attribution Map, and per-repo performance memory.",
+  "author": {
+    "name": "Xavier",
+    "email": "xavi-999@users.noreply.github.com"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "scan": "node skills/browsergnome/scripts/perf_scan.mjs",
+    "map": "node skills/browsergnome/scripts/build_perf_map.mjs",
+    "map:lcp": "node skills/browsergnome/scripts/build_lcp_map.mjs",
+    "report": "node skills/browsergnome/scripts/build_run_report.mjs",
+    "stats:test": "node skills/browsergnome/scripts/stats.mjs --self-test",
+    "playbook": "node skills/browsergnome/scripts/build_playbook.mjs",
+    "playbook:test": "node skills/browsergnome/scripts/build_playbook.mjs --self-test",
+    "doctor": "node skills/browsergnome/scripts/doctor.mjs",
+    "doctor:test": "node skills/browsergnome/scripts/doctor.mjs --self-test",
+    "trace:test": "node skills/browsergnome/scripts/trace_metrics.mjs --self-test",
+    "bundle": "node skills/browsergnome/scripts/bundle_stats.mjs",
+    "bundle:test": "node skills/browsergnome/scripts/bundle_stats.mjs --self-test",
+    "lcp-attribution:test": "node skills/browsergnome/scripts/lcp_attribution.mjs --self-test",
+    "test": "npm run stats:test && npm run playbook:test && npm run doctor:test && npm run trace:test && npm run bundle:test && npm run lcp-attribution:test"
+  },
+  "dependencies": {
+    "@babel/parser": "^7.29.7",
+    "@babel/traverse": "^7.29.7"
+  }
+}
