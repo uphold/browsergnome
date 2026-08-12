@@ -13,15 +13,23 @@ silently accumulates open tabs.
 
 **Metric:** LCP (lower is better). Secondary: TTFB, FCP — reported alongside but not gated on.
 
-**Fixed `emulate` settings** (from `.bgn/config.json`, set by Doctor):
-`cpuThrottlingRate: 4`, `networkConditions: "Slow 4G"`, fixed viewport (`1280x720x1`). Fixed settings
-matter more than "realistic" ones — the gate compares distributions collected under identical
-conditions; changing conditions mid-run invalidates the comparison.
+**`emulate` settings: read live from `.bgn/config.json`'s `emulate` block, every run** — never
+hardcode a throttle value. Default (Doctor-bootstrapped): no CPU/network throttle, so a fresh run's
+numbers land close to DevTools' Performance tab / Lighthouse rather than an artificially harsh
+worst-case. What matters for the gate isn't *which* conditions, it's that every run in a comparison
+uses the *same* ones — the gate compares distributions collected under identical conditions;
+changing conditions mid-run invalidates the comparison. A user who wants worst-case/mobile-network
+sensitivity (e.g. to catch a fix that only pays off under real network/CPU constraints) can set
+`cpuThrottlingRate`/`networkConditions` in Configurations — that's a deliberate opt-in, not a
+default any report should silently assume.
 
 **Target URL must be a compressed production build, never a dev server.** An unbundled dev server
 (Vite's `vite dev`, and similar unbundled-by-default dev servers) serves hundreds of individual
-module requests instead of a few bundled chunks — under network throttling that waterfall dominates
-LCP so completely the number stops measuring anything a real fix could move. Build for production
+module requests instead of a few bundled chunks — under network throttling (if enabled) that
+waterfall dominates LCP so completely the number stops measuring anything a real fix could move. The
+same waterfall can also appear on a *production* build if it's locally re-served over HTTP/1.1 (many
+first-party chunks, one connection cap) — see `lcp_attribution.mjs`'s `computeTransportProfile` /
+the LCP Attribution Map's HTTP/1.1 banner, which flags that case directly. Build for production
 first (`vite build` / the framework's equivalent) and point the preset at that output, served with
 compression enabled — an uncompressed static server measures a payload real users never see, and can
 flip the whole diagnosis. See `references/measurement.md`'s second `first-load` noise
@@ -31,7 +39,7 @@ numbers on the same app.
 **Drive, each of the N runs:**
 ```
 new_page { url: <target URL>, isolatedContext: "browsergnome-run-<n>" }
-  → emulate { cpuThrottlingRate: 4, networkConditions: "Slow 4G", viewport: "1280x720x1" }
+  → emulate <.bgn/config.json's emulate block>   (default: no throttle — see above)
   → performance_start_trace { reload: true, autoStop: true, filePath: <run-scoped path> }
   → trace_metrics.mjs <trace file>   (LCP/FCP/TTFB/CLS/TBT/scriptTimings)
   → close_page
@@ -98,7 +106,7 @@ of running the full loop on a target the gate can't discriminate for.
 **Drive, each of the N runs:**
 ```
 new_page { url: <target URL>, isolatedContext: "layout-shift-run-<n>" }
-  → emulate { cpuThrottlingRate: 4, networkConditions: "Slow 4G", viewport: "1280x720x1" }
+  → emulate <.bgn/config.json's emulate block>   (default: no throttle — see `first-load`'s entry)
   → performance_start_trace { reload: true, autoStop: false }
   → wait_for the load-completion signal (the suspect element's own `load`/`error` event, or a fixed
     settle window if no single element is the obvious cause — the default `autoStop:true` window is too
@@ -160,13 +168,12 @@ acceptance bar, long-task-total's doesn't (and measures the wrong thing besides 
 `references/measurement.md`'s "Observed noise — `interaction`" section for the full reasoning and
 numbers).
 
-**Fixed `emulate` settings:** same as `first-load` — `cpuThrottlingRate: 4`, `networkConditions:
-"Slow 4G"`, fixed viewport (`1280x720x1`).
+**`emulate` settings:** same as `first-load` — read live from `.bgn/config.json`, default no throttle.
 
 **Drive, each of the N runs:**
 ```
 new_page { url: <target URL>, isolatedContext: "browsergnome-run-<n>" }
-  → emulate { cpuThrottlingRate: 4, networkConditions: "Slow 4G", viewport: "1280x720x1" }
+  → emulate <.bgn/config.json's emulate block>   (default: no throttle — see `first-load`'s entry)
   → performance_start_trace { reload: true, autoStop: false, filePath: <run-scoped path> }
   → wait_for { text: [<target element's visible text>] }
   → click { uid: <target element's uid from the wait_for/take_snapshot response> }

@@ -80,6 +80,10 @@ function main() {
     meta: {
       url: attribution.url,
       lcpMs: attribution.lcpMs,
+      tbtMs: attribution.tbtMs ?? null,
+      phases: attribution.phases ?? null,
+      transport: attribution.transport ?? null,
+      throttled: attribution.throttled ?? null,
       degraded: attribution.degraded,
       counts: {
         network: nodes.filter((n) => n.class === 'network').length,
@@ -112,6 +116,15 @@ function main() {
   console.log(`  ${payload.meta.url || '(no url)'} · LCP ${payload.meta.lcpMs != null ? Math.round(payload.meta.lcpMs) + 'ms' : '?'}`);
   console.log(`  ${payload.meta.counts.network} network · ${payload.meta.counts.chunk} chunk · ${payload.meta.counts.module} module` +
     (payload.meta.degraded ? '  (degraded: no bundle stats, chunk-only)' : ''));
+  if (payload.meta.transport?.legacyHttp) {
+    const t = payload.meta.transport;
+    console.log(`  ⚠ transport: HTTP/1.1 (${t.http1Count}/${t.firstPartyTotal} first-party requests) — results may not represent production (HTTP/2 CDN). See banner.`);
+  }
+  if (payload.meta.throttled) {
+    const t = payload.meta.throttled;
+    console.log(`  throttled reference (${t.label}): FCP ${t.fcpMs != null ? Math.round(t.fcpMs) + 'ms' : '?'} ·` +
+      ` LCP ${t.lcpMs != null ? Math.round(t.lcpMs) + 'ms' : '?'} · TBT ${t.tbtMs != null ? Math.round(t.tbtMs) + 'ms' : '?'}`);
+  }
   console.log(`  open with:  open ${outAbs}\n`);
 
   if (open) {

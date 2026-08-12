@@ -166,8 +166,8 @@ const DEFAULT_CONFIG = (axes) => ({
   bundler: axes.bundler,
   host: axes.host,
   emulate: {
-    cpuThrottlingRate: 4,
-    networkConditions: 'Slow 4G',
+    cpuThrottlingRate: 1,     // 1-20; 1 = no slowdown, matches DevTools/Lighthouse-adjacent numbers
+    networkConditions: null,  // null | 'Offline' | 'Slow 3G' | 'Fast 3G' | 'Slow 4G' | 'Fast 4G'
     viewport: '1280x720x1',
   },
 });
