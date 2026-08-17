@@ -55,6 +55,14 @@
   .stat .l { font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); margin-top: 2px; }
   .degraded { margin-top: 12px; padding: 7px 10px; border-radius: 8px; font-size: 11px; color: var(--warn);
     background: rgba(248, 113, 113, 0.1); border: 1px solid rgba(248, 113, 113, 0.25); }
+  .critical { margin-top: 12px; padding: 9px 11px; border-radius: 8px; font-size: 11px; line-height: 1.5;
+    color: #fecaca; background: rgba(220, 38, 38, 0.22); border: 1px solid rgba(248, 113, 113, 0.5); }
+  .critical b { color: #fff; }
+
+  .phases-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--panel-2); }
+  .phases-bar span { height: 100%; }
+  .phases-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; font-family: var(--mono); }
+  .phases-note { margin-top: 6px; font-size: 10px; color: var(--faint); line-height: 1.5; }
 
   #legend { bottom: 18px; left: 18px; padding: 10px 14px; display: flex; flex-direction: column; gap: 7px; }
   .leg-row { display: flex; gap: 14px; align-items: center; }
@@ -110,8 +118,28 @@
   </div>
   <div class="eyebrow">lcp attribution map</div>
   <div class="url" id="urlEl"></div>
+  <div class="critical" id="transportEl" style="display:none"></div>
   <div class="lcp-badge"><span class="n" id="lcpEl"></span><span class="l">LCP</span></div>
   <div class="stats" id="stats"></div>
+  <div class="mainmetrics" id="mainMetricsEl" style="display:none">
+    <div class="eyebrow" style="margin-top:14px">measured</div>
+    <div class="stats" id="mainMetricsStats"></div>
+  </div>
+  <div class="phases" id="phasesEl" style="display:none">
+    <div class="eyebrow" style="margin-top:14px">lcp phases</div>
+    <div class="phases-bar" id="phasesBar"></div>
+    <div class="phases-legend" id="phasesLegend"></div>
+    <div class="phases-note">nodes below cover loading time only — fcp→lcp is everything after
+      first paint (main-thread work, hydration, later fetches), not decomposed into nodes.</div>
+  </div>
+  <div class="throttled" id="throttledEl" style="display:none">
+    <div class="eyebrow" style="margin-top:14px" id="throttledLabelEl">throttled reference</div>
+    <div class="stats" id="throttledStats"></div>
+  </div>
+  <div class="crux" id="cruxEl" style="display:none">
+    <div class="eyebrow" style="margin-top:14px" id="cruxLabelEl">field data — real users</div>
+    <div class="stats" id="cruxStats"></div>
+  </div>
   <div class="degraded" id="degradedEl" style="display:none">no bundler stats — chunk-only view, no module tier</div>
 </header>
 
@@ -125,6 +153,12 @@
   <div class="leg-row">
     <span class="leg-item"><span class="leg-dot" style="background:#fff;opacity:1"></span>measured</span>
     <span class="leg-item"><span class="leg-dot" style="background:#fff;opacity:0.4"></span>apportioned (estimate)</span>
+  </div>
+  <div class="leg-row" id="cruxLegendRow" style="display:none">
+    <span class="leg-item"><span class="leg-dot" style="background:#34d399"></span>good</span>
+    <span class="leg-item"><span class="leg-dot" style="background:#fb923c"></span>needs improvement</span>
+    <span class="leg-item"><span class="leg-dot" style="background:#f87171"></span>poor</span>
+    <span class="leg-sep">CrUX rating</span>
   </div>
 </div>
 
@@ -147,14 +181,86 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const fmtBytes = (b) => b == null ? null : b < 1024 ? `${b} B` : `${(b / 1024).toFixed(1)} KB`;
+  const fmtSec = (v) => v == null ? '—' : (v / 1000).toFixed(1) + 's';
+  const statsRow = (entries) => entries.map(([l, n]) =>
+    `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('');
+  // Same as statsRow, plus an optional CrUX good/ni/poor rating that colors the
+  // number — same rating→color mapping as #cruxLegendRow, kept off the node
+  // classes' palette (amber/blue/teal) so a rating dot never means two things.
+  const RATING_COLOR = { good: '#34d399', ni: '#fb923c', poor: '#f87171' };
+  const statsRowRated = (entries) => entries.map(([l, n, rating]) =>
+    `<div class="stat"><div class="n"${rating ? ` style="color:${RATING_COLOR[rating]}"` : ''}>${n}</div><div class="l">${l}</div></div>`).join('');
 
   document.getElementById('urlEl').textContent = DATA.meta.url || '';
   document.getElementById('lcpEl').textContent = DATA.meta.lcpMs != null ? Math.round(DATA.meta.lcpMs) + 'ms' : '—';
   const c = DATA.meta.counts;
-  document.getElementById('stats').innerHTML = [
+  document.getElementById('stats').innerHTML = statsRow([
     ['network', c.network], ['chunk', c.chunk], ['module', c.module],
-  ].map(([l, n]) => `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('');
+  ]);
   if (DATA.meta.degraded) document.getElementById('degradedEl').style.display = 'block';
+
+  if (DATA.meta.lcpMs != null) {
+    document.getElementById('mainMetricsStats').innerHTML = statsRow([
+      ['fcp', fmtSec(DATA.meta.phases ? DATA.meta.phases.ttfbMs + DATA.meta.phases.loadToFcpMs : null)],
+      ['lcp', fmtSec(DATA.meta.lcpMs)],
+      ['tbt', DATA.meta.tbtMs != null ? Math.round(DATA.meta.tbtMs) + 'ms' : '—'],
+    ]);
+    document.getElementById('mainMetricsEl').style.display = 'block';
+  }
+
+  const transport = DATA.meta.transport;
+  if (transport?.legacyHttp) {
+    const transportEl = document.getElementById('transportEl');
+    transportEl.innerHTML = `⚠ <b>Measured over HTTP/1.1</b> — production likely serves these assets from a
+      CDN over HTTP/2/3. ${transport.http1Count} of ${transport.firstPartyTotal} first-party requests used
+      HTTP/1.1, which serializes into a request waterfall that inflates LCP under throttling.
+      <b>This measurement may not represent production.</b>`;
+    transportEl.style.display = 'block';
+  }
+
+  // accent (pink) is reserved for the LCP badge above — phase segments use
+  // their own palette so no color means "LCP" in one place and something
+  // else in the bar.
+  const ph = DATA.meta.phases;
+  if (ph && DATA.meta.lcpMs > 0) {
+    const segs = [
+      { label: 'ttfb', ms: ph.ttfbMs, color: 'var(--dim)' },
+      { label: 'load→fcp', ms: ph.loadToFcpMs, color: '#a78bfa' },
+      { label: 'fcp→lcp', ms: ph.fcpToLcpMs, color: 'var(--warn)' },
+    ];
+    document.getElementById('phasesBar').innerHTML = segs.map((s) =>
+      `<span style="width:${(s.ms / DATA.meta.lcpMs * 100).toFixed(2)}%;background:${s.color}"></span>`).join('');
+    document.getElementById('phasesLegend').innerHTML = segs.map((s) =>
+      `<span class="leg-item"><span class="leg-dot" style="background:${s.color}"></span>${s.label} ${Math.round(s.ms)}ms</span>`).join('');
+    document.getElementById('phasesEl').style.display = 'block';
+  }
+
+  const throttled = DATA.meta.throttled;
+  if (throttled) {
+    document.getElementById('throttledLabelEl').textContent = `throttled reference — ${throttled.label}`;
+    document.getElementById('throttledStats').innerHTML = statsRow([
+      ['fcp', fmtSec(throttled.fcpMs)],
+      ['lcp', fmtSec(throttled.lcpMs)],
+      ['tbt', throttled.tbtMs != null ? Math.round(throttled.tbtMs) + 'ms' : '—'],
+    ]);
+    document.getElementById('throttledEl').style.display = 'block';
+  }
+
+  const crux = DATA.meta.crux;
+  if (crux) {
+    const m = crux.metrics;
+    document.getElementById('cruxLabelEl').textContent =
+      `field data — real users (${crux.source === 'psi' ? 'via PageSpeed Insights' : 'CrUX'}, origin)`;
+    document.getElementById('cruxStats').innerHTML = statsRowRated([
+      ['fcp', fmtSec(m.fcp.p75), m.fcp.rating],
+      ['lcp', fmtSec(m.lcp.p75), m.lcp.rating],
+      ['cls', m.cls.p75 != null ? m.cls.p75.toFixed(2) : '—', m.cls.rating],
+      ['inp', m.inp.p75 != null ? Math.round(m.inp.p75) + 'ms' : '—', m.inp.rating],
+      ['ttfb', fmtSec(m.ttfb.p75), m.ttfb.rating],
+    ]);
+    document.getElementById('cruxEl').style.display = 'block';
+    document.getElementById('cruxLegendRow').style.display = 'flex';
+  }
 
   const METHOD = {
     network: 'Render-blocking network resource. ms = load duration, clipped to the pre-LCP window, measured directly from the trace\'s send/response/finish events.',

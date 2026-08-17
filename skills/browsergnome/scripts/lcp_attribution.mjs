@@ -64,7 +64,7 @@
 import fs from 'node:fs';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
-import { decodeTrace, pickNavigation, computeLCP, computeScriptTimings } from './trace_metrics.mjs';
+import { decodeTrace, pickNavigation, computeLCP, computeFCP, computeTTFB, computeLongTasksAndTBT, computeScriptTimings } from './trace_metrics.mjs';
 import { decodeStats, parseBundleStats } from './bundle_stats.mjs';
 
 // ── Network tier (measured) ────────────────────────────────────────────────
@@ -221,14 +221,103 @@ export function attributeModuleTier(chunkTierNodes, bundleStats) {
   return modules;
 }
 
+// ── Transport profile ────────────────────────────────────────────────────
+
+function safeOrigin(url) {
+  try { return new URL(url).origin; } catch { return null; }
+}
+
+/**
+ * First-party request count by HTTP protocol, scoped to the navigation's
+ * frame. First-party only (same origin as the navigation URL) — third-party
+ * CDN/widget/analytics requests are usually already on h2/h3 and would mask
+ * a first-party origin still on HTTP/1.1.
+ *
+ * HTTP/1.1 caps the browser at ~6 connections per origin; a first-party
+ * origin with many requests on HTTP/1.1 serializes into a request waterfall
+ * a production CDN (h2/h3, multiplexed) wouldn't have. `legacyHttp` flags
+ * that case so a measurement against it can be labeled non-representative
+ * instead of reported at face value.
+ */
+export function computeTransportProfile(events, nav) {
+  const origin = safeOrigin(nav.url);
+  const sends = new Map();
+  for (const e of events) {
+    if (e.name === 'ResourceSendRequest' && e.args?.data?.frame === nav.frame) {
+      sends.set(e.args.data.requestId, e.args.data.url);
+    }
+  }
+  const byProtocol = {};
+  let firstPartyTotal = 0, http1Count = 0;
+  for (const e of events) {
+    if (e.name !== 'ResourceReceiveResponse') continue;
+    const requestId = e.args?.data?.requestId;
+    const url = sends.get(requestId);
+    if (!url || (origin && safeOrigin(url) !== origin)) continue;
+    firstPartyTotal++;
+    const protocol = e.args.data.protocol || 'unknown';
+    byProtocol[protocol] = (byProtocol[protocol] || 0) + 1;
+    if (protocol === 'http/1.1') http1Count++;
+  }
+  const http1Share = firstPartyTotal ? http1Count / firstPartyTotal : 0;
+  return {
+    firstPartyTotal,
+    byProtocol,
+    http1Count,
+    http1Share,
+    legacyHttp: firstPartyTotal > 0 && http1Share >= 0.5,
+  };
+}
+
+// ── Phase breakdown ──────────────────────────────────────────────────────
+
+/**
+ * TTFB / load-to-FCP / FCP-to-LCP split of the full lcpMs window. Unlike
+ * the node tiers above (per-resource, can overlap, can undershoot lcpMs —
+ * see file header), this always sums to exactly lcpMs by construction: each
+ * mark is clamped into [previous mark, lcpMs] before subtracting, so a
+ * missing or out-of-order FCP/TTFB can't make a phase negative or make the
+ * three parts not add up. It exists because the node tiers only cover
+ * network-loading time — a load that's fast but whose LCP fires long after
+ * FCP (main-thread work, client-side data fetching, hydration) would
+ * otherwise show a handful of small nodes next to a much larger lcpMs with
+ * nothing accounting for the difference.
+ */
+export function computeLcpPhases(ttfbMs, fcpMs, lcpMs) {
+  if (lcpMs == null) return null;
+  const ttfb = Math.max(0, Math.min(ttfbMs ?? 0, lcpMs));
+  const fcp = Math.max(ttfb, Math.min(fcpMs ?? ttfb, lcpMs));
+  return { ttfbMs: ttfb, loadToFcpMs: fcp - ttfb, fcpToLcpMs: lcpMs - fcp };
+}
+
+// ── Throttled reference (optional, secondary capture) ───────────────────
+
+/**
+ * Summary metrics (LCP/FCP/TBT) from a second, separately-captured trace —
+ * a throttled reference run alongside the main (default: unthrottled)
+ * capture, for a Lighthouse-comparable secondary readout. `label` describes
+ * whatever `emulate` conditions that second trace was actually captured
+ * under; this function has no way to know that from the trace itself, so it
+ * takes the caller's word for it rather than guessing.
+ */
+export function computeThrottledReference(events, label) {
+  const nav = pickNavigation(events);
+  if (!nav) return null;
+  const lcpMs = computeLCP(events, nav);
+  const { tbt } = computeLongTasksAndTBT(events, nav);
+  return { label: label || 'throttled', lcpMs, fcpMs: computeFCP(events, nav), tbtMs: tbt };
+}
+
 // ── Combine ──────────────────────────────────────────────────────────────
 
 /**
  * Build the full three-tier node list for one trace (+ optional bundle
  * stats). `bundleStats` is optional — omit it (or pass a `{error}` result
  * from `parseBundleStats`) to get the mandatory degraded chunk-only map.
+ * `throttledEvents`/`throttledLabel` are optional — a second trace's events
+ * to summarize as a secondary reference reading (see `computeThrottledReference`).
  */
-export function buildAttributionData(events, bundleStats) {
+export function buildAttributionData(events, bundleStats, throttledEvents, throttledLabel) {
   const nav = pickNavigation(events);
   if (!nav) return { error: 'no navigation found in trace' };
   const lcpMs = computeLCP(events, nav);
@@ -239,6 +328,10 @@ export function buildAttributionData(events, bundleStats) {
   return {
     url: nav.url,
     lcpMs,
+    tbtMs: computeLongTasksAndTBT(events, nav).tbt,
+    phases: computeLcpPhases(computeTTFB(events, nav), computeFCP(events, nav), lcpMs),
+    transport: computeTransportProfile(events, nav),
+    throttled: throttledEvents ? computeThrottledReference(throttledEvents, throttledLabel) : null,
     degraded, // true → no bundler stats, module tier intentionally empty
     nodes: [...network, ...chunks, ...modules],
   };
@@ -264,6 +357,45 @@ function selfTest() {
     modMs.reduce((s, m) => s + m.ms, 0), 100);
   check('apportionModuleMs: empty modules[] (unsupported-format degrade case) returns []',
     apportionModuleMs({ file: 'x.js', bytes: 100, modules: [] }, 50), []);
+
+  // computeLcpPhases: always sums to exactly lcpMs, even with missing/out-of-order marks
+  check('computeLcpPhases: null lcpMs -> null', computeLcpPhases(10, 20, null), null);
+  check('computeLcpPhases: normal case sums to lcpMs', computeLcpPhases(10, 40, 100),
+    { ttfbMs: 10, loadToFcpMs: 30, fcpToLcpMs: 60 });
+  check('computeLcpPhases: missing ttfb/fcp treated as 0, still sums to lcpMs',
+    computeLcpPhases(null, null, 100), { ttfbMs: 0, loadToFcpMs: 0, fcpToLcpMs: 100 });
+  check('computeLcpPhases: fcp before ttfb clamped, no negative phase',
+    computeLcpPhases(50, 10, 100), { ttfbMs: 50, loadToFcpMs: 0, fcpToLcpMs: 50 });
+  check('computeLcpPhases: marks past lcpMs clamped, no negative phase',
+    computeLcpPhases(200, 300, 100), { ttfbMs: 100, loadToFcpMs: 0, fcpToLcpMs: 0 });
+
+  // computeTransportProfile: first-party-only protocol profiling
+  {
+    const FRAME = 'TFRAME', PID = 111;
+    const nav = { frame: FRAME, pid: PID, navStartUs: 1_000_000, url: 'https://example.com/' };
+    const send = (n, url) => ({ name: 'ResourceSendRequest', ts: 1_000_000 + n, args: { data: { requestId: `r${n}`, frame: FRAME, url } } });
+    const recv = (n, protocol) => ({ name: 'ResourceReceiveResponse', ts: 1_000_000 + n + 1, args: { data: { requestId: `r${n}`, protocol } } });
+
+    const mostlyHttp1 = [
+      send(1, 'https://example.com/a.js'), recv(1, 'http/1.1'),
+      send(2, 'https://example.com/b.js'), recv(2, 'http/1.1'),
+      send(3, 'https://example.com/c.js'), recv(3, 'h2'),
+    ];
+    const mostlyHttp1Profile = computeTransportProfile(mostlyHttp1, nav);
+    check('computeTransportProfile: mostly http/1.1 first-party -> legacyHttp true', mostlyHttp1Profile.legacyHttp, true);
+    check('computeTransportProfile: http1Count counts only http/1.1', mostlyHttp1Profile.http1Count, 2);
+    check('computeTransportProfile: firstPartyTotal counts all first-party responses', mostlyHttp1Profile.firstPartyTotal, 3);
+
+    const thirdPartyHttp1 = [
+      send(1, 'https://example.com/a.js'), recv(1, 'h2'),
+      send(2, 'https://widget.example/w.js'), recv(2, 'http/1.1'), // third-party, must not count
+    ];
+    check('computeTransportProfile: third-party http/1.1 excluded, first-party is h2 -> legacyHttp false',
+      computeTransportProfile(thirdPartyHttp1, nav).legacyHttp, false);
+
+    check('computeTransportProfile: no responses -> firstPartyTotal 0, legacyHttp false',
+      computeTransportProfile([], nav), { firstPartyTotal: 0, byProtocol: {}, http1Count: 0, http1Share: 0, legacyHttp: false });
+  }
 
   // matchChunkToUrl (via attributeModuleTier): suffix match, not equality
   const chunkTier = [{ class: 'chunk', label: 'https://example.com/_next/static/main.js', ms: 100, confidence: 'measured' }];
@@ -348,6 +480,12 @@ function selfTest() {
     const chunkTier = attributeChunkTier(events, nav);
     check('real fixture: chunk tier is genuinely non-empty (real script timings survived the trim, not just network events)',
       chunkTier.length > 0, true);
+    const phases = computeLcpPhases(computeTTFB(events, nav), computeFCP(events, nav), lcpMs);
+    check('real fixture: phases sum to exactly lcpMs',
+      Math.round((phases.ttfbMs + phases.loadToFcpMs + phases.fcpToLcpMs) * 1000) / 1000,
+      Math.round(lcpMs * 1000) / 1000);
+    check('real fixture: nextjs.org served over modern HTTP, no false-positive legacyHttp flag',
+      computeTransportProfile(events, nav).legacyHttp, false);
   } catch (err) {
     console.log(`  FAIL  real fixture decodes and parses  (threw: ${err.message})`);
     fail++;
@@ -364,8 +502,30 @@ function selfTest() {
       result.degraded, true);
     check('buildAttributionData: network + chunk tiers still present even when degraded',
       result.nodes.some(n => n.class === 'network') && result.nodes.some(n => n.class === 'chunk'), true);
+    check('buildAttributionData: top-level tbtMs is a number (for the main-run stats row)',
+      typeof result.tbtMs, 'number');
   } catch (err) {
     console.log(`  FAIL  buildAttributionData degradation path  (threw: ${err.message})`);
+    fail++;
+  }
+
+  // buildAttributionData: optional throttled reference wiring
+  try {
+    const path = new URL('../assets/trace.render-blocking-sample.json.gz', import.meta.url);
+    const events = decodeTrace(fs.readFileSync(path));
+    const noThrottled = buildAttributionData(events, undefined);
+    check('buildAttributionData: throttled is null when no second trace given', noThrottled.throttled, null);
+
+    const withThrottled = buildAttributionData(events, undefined, events, '4x CPU · Slow 4G');
+    check('buildAttributionData: throttled reference present when a second trace is given', withThrottled.throttled != null, true);
+    check('buildAttributionData: throttled reference carries the caller-supplied label', withThrottled.throttled.label, '4x CPU · Slow 4G');
+    check('buildAttributionData: throttled.lcpMs matches computeLCP on that trace directly', withThrottled.throttled.lcpMs, noThrottled.lcpMs);
+    check('buildAttributionData: throttled reference has a numeric tbtMs', typeof withThrottled.throttled.tbtMs, 'number');
+
+    check('computeThrottledReference: default label when none given', computeThrottledReference(events).label, 'throttled');
+    check('computeThrottledReference: no navigation -> null', computeThrottledReference([]), null);
+  } catch (err) {
+    console.log(`  FAIL  buildAttributionData throttled reference wiring  (threw: ${err.message})`);
     fail++;
   }
 
@@ -378,16 +538,23 @@ function selfTest() {
 function main() {
   if (process.argv.includes('--self-test')) return selfTest();
 
-  const positional = process.argv.slice(2).filter(a => !a.startsWith('--'));
+  const args = process.argv.slice(2);
+  const flagValueIdx = (flag) => { const i = args.indexOf(flag); return i >= 0 ? i + 1 : -1; };
+  const throttledIdx = flagValueIdx('--throttled');
+  const throttledLabelIdx = flagValueIdx('--throttled-label');
+  const skip = new Set([throttledIdx, throttledLabelIdx]);
+  const positional = args.filter((a, i) => !a.startsWith('--') && !skip.has(i));
   const [traceFile, bundleStatsFile] = positional;
   if (!traceFile) {
-    console.error('usage: node lcp_attribution.mjs <trace.json[.gz]> [bundle-stats.json[.gz]]');
+    console.error('usage: node lcp_attribution.mjs <trace.json[.gz]> [bundle-stats.json[.gz]] [--throttled <trace.json[.gz]>] [--throttled-label <text>]');
     console.error('       node lcp_attribution.mjs --self-test');
     process.exit(1);
   }
   const events = decodeTrace(fs.readFileSync(traceFile));
   const bundleStats = bundleStatsFile ? parseBundleStats(decodeStats(fs.readFileSync(bundleStatsFile))) : undefined;
-  console.log(JSON.stringify(buildAttributionData(events, bundleStats), null, 2));
+  const throttledEvents = throttledIdx >= 0 ? decodeTrace(fs.readFileSync(args[throttledIdx])) : undefined;
+  const throttledLabel = throttledLabelIdx >= 0 ? args[throttledLabelIdx] : undefined;
+  console.log(JSON.stringify(buildAttributionData(events, bundleStats, throttledEvents, throttledLabel), null, 2));
 }
 
 // See trace_metrics.mjs's identical guard for why pathToFileURL, not a

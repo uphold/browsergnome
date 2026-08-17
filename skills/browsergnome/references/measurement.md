@@ -79,6 +79,13 @@ anything where bigger is better (none of the current presets need `higher`, but 
 global config key — see "Observed noise" below for `first-load`'s (30ms). The other presets have no
 calibrated `minEffect` yet; don't invent one before they're built.
 
+**`minEffect`/`k` below were characterized under a throttled `emulate` profile — `.bgn/config.json`'s
+default is no longer throttled (see `presets.md`).** Noise magnitude is a function of the conditions a
+run was captured under; a number calibrated under `cpuThrottlingRate:4`/`Slow 4G` isn't guaranteed to
+still be the right noise band under no-throttle numbers, which are smaller in absolute ms but may carry
+a different relative jitter. Treat `minEffect: 30`/`k: 2` as provisional until re-run under whatever
+`emulate` profile is actually configured, not as still-proven for the new default.
+
 **Standing ship rule:** a preset ships gated only if its noise band would accept a real 20% improvement
 — check this fresh for every preset when it's built. If a preset's noise band is too wide for that,
 **change the metric, never loosen `k`** to force a pass — widening `k` doesn't make a noisy metric less

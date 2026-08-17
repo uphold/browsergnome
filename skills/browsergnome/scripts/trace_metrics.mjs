@@ -81,19 +81,26 @@ export function decodeTrace(buf) {
   return Array.isArray(data) ? data : (data.traceEvents || []);
 }
 
+/** Outermost main frame id from `TracingStartedInBrowser`, or null if absent. */
+function findMainFrame(events) {
+  const tracingStarted = events.find(e => e.name === 'TracingStartedInBrowser');
+  const frame = tracingStarted?.args?.data?.frames?.find(f => f.isOutermostMainFrame);
+  return frame?.frame ?? null;
+}
+
 /**
  * Pick the navigation to measure: the most recent `navigationStart` with a
- * real `documentLoaderURL` (Chrome also emits an earlier synthetic one with
- * an empty URL for the initial about:blank commit — confirmed on a live
- * trace, not assumed). Scoping every other metric to this navigation's
- * frame+pid is what keeps iframes and prior navigations in the same trace
- * from polluting the numbers.
+ * real `documentLoaderURL`, scoped to the main frame when one can be
+ * identified — a subframe (ad, widget, etc.) can navigate after the real
+ * page load and would otherwise win "most recent" outright.
  * @param {object[]} events
  * @returns {{frame:string, pid:number, navStartUs:number, url:string}|null}
  */
 export function pickNavigation(events) {
+  const mainFrame = findMainFrame(events);
   const starts = events
     .filter(e => e.name === 'navigationStart' && e.args?.data?.documentLoaderURL)
+    .filter(e => !mainFrame || e.args.frame === mainFrame)
     .sort((a, b) => a.ts - b.ts);
   if (starts.length === 0) return null;
   const last = starts[starts.length - 1];
@@ -334,6 +341,27 @@ function selfTest() {
   const nav = pickNavigation(events);
   check('pickNavigation ignores decoy, keeps real URL', nav?.url, 'https://example.com/');
   check('pickNavigation frame', nav?.frame, FRAME);
+
+  // subframe navigating after the main frame must not win "most recent"
+  {
+    const SUBFRAME = 'SUBFRAME1', NESTED_FRAME = 'SUBFRAME2';
+    const subframeEvents = [
+      {
+        name: 'TracingStartedInBrowser', ts: navStart - 1000,
+        args: { data: { frames: [
+          { frame: FRAME, isOutermostMainFrame: true, url: 'https://example.com/' },
+          { frame: SUBFRAME, isOutermostMainFrame: false, parent: FRAME, url: 'https://widget.example/' },
+          { frame: NESTED_FRAME, isOutermostMainFrame: false, parent: SUBFRAME, url: 'about:blank' },
+        ] } },
+      },
+      { name: 'navigationStart', pid: PID, ts: navStart, args: { frame: FRAME, data: { documentLoaderURL: 'https://example.com/' } } },
+      { name: 'navigationStart', pid: PID, ts: navStart + 500_000, args: { frame: SUBFRAME, data: { documentLoaderURL: 'https://widget.example/' } } },
+      { name: 'navigationStart', pid: PID, ts: navStart + 501_000, args: { frame: NESTED_FRAME, data: { documentLoaderURL: 'about:blank' } } },
+    ];
+    const subframeNav = pickNavigation(subframeEvents);
+    check('pickNavigation keeps the main frame despite a later subframe nav', subframeNav?.frame, FRAME);
+    check('pickNavigation keeps the real URL despite a later subframe nav', subframeNav?.url, 'https://example.com/');
+  }
 
   check('LCP = last candidate ts - navStart', computeLCP(events, nav), 300);
   check('FCP', computeFCP(events, nav), 180);

@@ -116,15 +116,29 @@ React Compiler suppression: `listRowNoMemo`/`inlinePropLiteral` are auto-suppres
 
 A different, stricter surface than Perf Map 3D: node size is a **measured millisecond** from a real
 trace, not a heuristic score. Needs a live capture, so it's invoked directly rather than through the
-menu:
+menu. Two captures, one page: the **main** capture (drive with `.bgn/config.json`'s `emulate` block —
+no throttle by default) and an optional **throttled reference** capture, shown as a secondary
+Lighthouse-comparable readout without changing what the main number measures.
 
 ```bash
-# 1. attribute a captured trace (+ optional bundle stats) -> attribution.json
-node "$BG/skills/browsergnome/scripts/lcp_attribution.mjs" <trace.json[.gz]> [bundle-stats.json[.gz]] > attribution.json
+# 1. main capture -> attribution.json (add --throttled/--throttled-label for the secondary readout)
+node "$BG/skills/browsergnome/scripts/lcp_attribution.mjs" <trace.json[.gz]> [bundle-stats.json[.gz]] \
+  [--throttled <throttled-trace.json[.gz]>] [--throttled-label <text>] > attribution.json
 
 # 2. merge into a standalone HTML (vendored 3d-force-graph + data inlined)
 node "$BG/skills/browsergnome/scripts/build_lcp_map.mjs" attribution.json --out lcp-map.html --open
 ```
+
+**Throttled reference profile: match the target's own form factor, not a blanket mobile default.**
+For a desktop web app (the common case — no `isMobile`/`touch` in the drive's `emulate` viewport),
+capture the reference under Lighthouse's **Desktop** profile (`desktopDense4G`): `cpuThrottlingRate: 1`
+(exact match), `networkConditions: "Fast 4G"` (chrome-devtools-mcp's closest labeled bucket to
+Dense4G's 40ms RTT/10Mbps — there's no exact preset, say so in the label rather than implying an exact
+match). Only use Lighthouse's **Mobile** profile (`cpuThrottlingRate: 4`, `networkConditions: "Slow
+4G"` — RTT 150ms/1.6Mbps↓/750Kbps↑, verified against Lighthouse's own docs) if the target is actually
+being tested as a mobile experience. Label the reference honestly either way — e.g. `"1x CPU · Fast 4G
+(Lighthouse Desktop default, applied not simulated)"` — the applied/simulated methodology gap is real
+regardless of which profile is picked, so don't imply exact parity with a live Lighthouse run.
 
 Node color = class (network/chunk/module); opacity = confidence (solid **measured**, translucent
 **apportioned**) — both explained in the legend and on click. No bundle stats (Vite, Turbopack) degrades
@@ -324,7 +338,7 @@ Display `.bgn/config.json`, let the user edit, write back. Bootstrapped by Docto
 | `budget` | `6` | max iterations per run (0 = until nothing clears the gate) |
 | `interleaved` | `true` | ABABAB by default — see `measurement.md`'s fallback rule |
 | `framework` / `bundler` / `host` | detected | written by Doctor, three independent axes, `unknown` is fine |
-| `emulate` | `{cpuThrottlingRate:4, networkConditions:"Slow 4G", viewport:"1280x720x1"}` | fixed conditions for comparable runs |
+| `emulate` | `{cpuThrottlingRate:1, networkConditions:null, viewport:"1280x720x1"}` | no throttle by default (DevTools/Lighthouse-adjacent numbers); same conditions across all N runs is what matters for the gate, not which conditions — set `cpuThrottlingRate`/`networkConditions` here to opt into worst-case/mobile-network sensitivity |
 | `depPulse` | `true` | does the Dep Pulse subagent run at all — see `references/dep-pulse.md` |
 | `depPulseAutoApply` | `true` | may a benign patch bump skip the pre-install confirm (3-condition carve-out; 2 more conditions still gate KEEP) |
 

@@ -167,12 +167,14 @@ const DEFAULT_CONFIG = (axes) => ({
   bundler: axes.bundler,
   host: axes.host,
   emulate: {
-    cpuThrottlingRate: 4,
-    networkConditions: 'Slow 4G',
+    cpuThrottlingRate: 1,     // 1-20; 1 = no slowdown, matches DevTools/Lighthouse-adjacent numbers
+    networkConditions: null,  // null | 'Offline' | 'Slow 3G' | 'Fast 3G' | 'Slow 4G' | 'Fast 4G'
     viewport: '1280x720x1',
   },
   depPulse: true,          // dispatch the Dep Pulse subagent — see references/dep-pulse.md
   depPulseAutoApply: true, // benign patch bumps (conditions 1-3) skip the pre-install confirm
+  prodUrl: null,     // production origin for the LCP Attribution Map's CrUX field-data tier — auto-detected/prompted at build time if unset
+  cruxApiKey: null,  // optional Google Cloud API key for the canonical CrUX API; omit to use keyless PageSpeed Insights (same data, no key)
 });
 
 const GITIGNORE_CONTENT = `# browsergnome — generated run artifacts (not committed with the app)
