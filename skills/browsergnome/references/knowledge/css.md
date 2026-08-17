@@ -9,6 +9,7 @@ Evidence: Animating only `transform` and `opacity` moves work off the main JS th
 When: A page has heavy off-screen sections that paint eagerly.
 Do: Apply `content-visibility:auto` + `contain-intrinsic-size` to those sections. Always pair `contain-intrinsic-size` with a realistic placeholder height to prevent layout shift during scrolling.
 Evidence: `content-visibility:auto` skips layout/paint work for off-screen content, deferring rendering until the element enters render proximity. `contain-intrinsic-size` provides a placeholder size so scrollbars don't shift as content is rendered just-in-time. Caveat: each section pays a style/layout burst when entering render proximity, which can jank fast scrolling if the content is heavy — pair with the "Deferred content-visibility release" pattern in `inp.md`. Source: [web.dev: content-visibility](https://web.dev/articles/content-visibility)
+Guidance: defer-rendering-heavy-content
 
 ### will-change — documented
 When: About to animate a specific CSS property, and normal rendering budgets are tight.

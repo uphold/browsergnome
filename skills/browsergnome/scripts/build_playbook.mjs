@@ -55,6 +55,10 @@ export function parseLedgerFile(content) {
     const guideMatch = block.match(/\*\*[Gg]uide:\*\*\s*(.+)/);
     const guide = guideMatch ? guideMatch[1].trim() : '';
 
+    // optional — a modern-web-guidance id cited on the knowledge-base entry this hypothesis came from
+    const guidanceMatch = block.match(/\*\*[Gg]uidance:\*\*\s*(.+)/);
+    const guidance = guidanceMatch ? guidanceMatch[1].trim() : '';
+
     // accept KEEP / KEPT / REVERT / REVERTED, with optional trailing whitespace
     const decMatch = block.match(/\*\*[Dd]ecision:\*\*\s*(keep|kept|revert(?:ed)?)\s*$/im);
     if (!decMatch) continue;
@@ -68,7 +72,7 @@ export function parseLedgerFile(content) {
       || block.match(/\*\*[Gg]ate:\*\*\s*occurrence rate improvement\s*(-?[\d.]+)/i);
     const improvement = gateMatch ? parseFloat(gateMatch[1]) : null;
 
-    hypotheses.push({ preset, direction, unit, guide, hypothesis, decision, improvement });
+    hypotheses.push({ preset, direction, unit, guide, guidance, hypothesis, decision, improvement });
   }
 
   return hypotheses;
@@ -85,6 +89,7 @@ export function aggregate(allHypotheses) {
       map.set(key, {
         preset: h.preset,
         guide: h.guide,
+        guidance: h.guidance,
         hypothesis: h.hypothesis,
         direction: h.direction,
         unit: h.unit,
@@ -101,6 +106,7 @@ export function aggregate(allHypotheses) {
     }
     if (!rec.unit && h.unit) rec.unit = h.unit;
     if (!rec.direction && h.direction) rec.direction = h.direction;
+    if (!rec.guidance && h.guidance) rec.guidance = h.guidance;
   }
   return Array.from(map.values()).map((r) => ({ ...r, source: 'measured' }));
 }
@@ -122,13 +128,18 @@ function formatEffects(effects, direction, unit) {
   return effects.map(e => `${signedEffect(e, direction)}${unit ? ' ' + unit : ''}`).join(', ');
 }
 
+// modern-web-guidance citation, if any — appended to the label rather than a new column
+function guidanceSuffix(r) {
+  return r.guidance ? ` · Guidance: ${r.guidance}` : '';
+}
+
 function winsTable(rows) {
   const lines = ['| Preset | Guide / Fix | Kept / Tried | Effects |', '|---|---|---|---|'];
   for (const r of rows) {
     const fix = r.hypothesis || r.guide || '(unknown)';
     const label = r.guide ? `${r.guide} (${fix})` : fix;
     const fx = formatEffects(r.effects, r.direction, r.unit);
-    lines.push(`| ${r.preset} | ${label} | ${r.kept}/${r.tried} | ${fx} |`);
+    lines.push(`| ${r.preset} | ${label}${guidanceSuffix(r)} | ${r.kept}/${r.tried} | ${fx} |`);
   }
   return lines;
 }
@@ -138,7 +149,7 @@ function deadTable(rows, noteFn) {
   for (const r of rows) {
     const fix = r.hypothesis || r.guide || '(unknown)';
     const label = r.guide ? `${r.guide} (${fix})` : fix;
-    lines.push(`| ${r.preset} | ${label} | ${r.tried} | ${noteFn(r)} |`);
+    lines.push(`| ${r.preset} | ${label}${guidanceSuffix(r)} | ${r.tried} | ${noteFn(r)} |`);
   }
   return lines;
 }
@@ -342,6 +353,22 @@ function selfTest() {
   ok('L4 guide (lowercase label)', h4[0]?.guide, 'js/memo-components');
   ok('L4 improvement null (no gate line)', h4[0]?.improvement, null);
 
+  // Parsing — optional Guidance: field, and its absence doesn't break the file
+  const L6 = `# Experiment Ledger — first-load on example-app
+
+- **Metric:** LCP (lower-is-better, unit ms)
+
+### H1 — Preload the LCP image
+- **Guide:** lcp
+- **Guidance:** optimize-preload-priority
+- **Gate:** improvement 300 vs noise band 50
+- **Decision:** KEEP
+`;
+  const h6 = parseLedgerFile(L6);
+  ok('L6 guidance parses', h6[0]?.guidance, 'optimize-preload-priority');
+  ok('L6 guide unaffected by the Guidance: line', h6[0]?.guide, 'lcp');
+  ok('L1 (no Guidance: line) still parses guidance as empty', h1[0]?.guidance, '');
+
   // Parsing — gateOccurrence()'s Gate-line shape (layout-shift), not gate()'s
   const L5 = `# Experiment Ledger — layout-shift on example-app
 
@@ -383,6 +410,13 @@ function selfTest() {
   ok('md shows 2/2 tally', md.includes('2/2'), true);
   ok('md uses correct lower-is-better sign (-)', md.includes('-213 ms'), true);
   ok('md does not show empty-state message', !md.includes('No completed ledger'), true);
+
+  // Aggregation + rendering carry a Guidance: citation through, without joining the key on it
+  const aggWithGuidance = aggregate([...h1, ...parseLedgerFile(L6)]);
+  const lcpRec = aggWithGuidance.find(r => r.guide === 'lcp');
+  ok('aggregate() carries guidance onto the record', lcpRec?.guidance, 'optimize-preload-priority');
+  const mdWithGuidance = buildMarkdown(aggWithGuidance, { date: '2026-06-06', totalHypotheses: 2, ledgerCount: 2 });
+  ok('rendered markdown cites the guidance id', mdWithGuidance.includes('Guidance: optimize-preload-priority'), true);
 
   // Seeded priors: aggregate() tags source, buildMarkdown separates them.
   ok('aggregate() tags measured source', records.every(r => r.source === 'measured'), true);

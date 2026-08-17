@@ -68,6 +68,7 @@
   {
     "preset": "first-load",
     "guide": "lcp",
+    "guidance": "optimize-preload-priority",
     "hypothesis": "<link rel=preload as=image> for the LCP image",
     "direction": "lower",
     "unit": "ms",
@@ -90,6 +91,7 @@
   {
     "preset": "interaction",
     "guide": "inp",
+    "guidance": "parallax-scroll-effects",
     "hypothesis": "Off-screen parallax/transform gating",
     "direction": "higher",
     "unit": "fps",
@@ -101,6 +103,7 @@
   {
     "preset": "first-load",
     "guide": "third-party",
+    "guidance": "improve-next-page-load-performance",
     "hypothesis": "Speculation Rules API",
     "direction": "lower",
     "unit": "ms",

@@ -14,6 +14,7 @@ Evidence: standard early-connection pattern. Modern browsers maintain up to 6 TC
 When: Navigation to a predictable next page is likely.
 Do: Add `<script type="speculationrules">` with prerender/prefetch rules for next-page prerendering or prefetching.
 Evidence: Speculation Rules API is production-ready in Chrome (v122+, latest improvements in Jan 2026) with limited support in other browsers. Enables prerendering or prefetching of predicted navigations to speed up subsequent page loads. See [MDN Speculation_Rules_API](https://developer.mozilla.org/en-US/docs/Web/API/Speculation_Rules_API), [Chrome Speculation Rules guide](https://developer.chrome.com/docs/web-platform/prerender-pages), [Chrome blog on improvements](https://developer.chrome.com/blog/speculation-rules-improvements).
+Guidance: improve-next-page-load-performance
 
 ### dns-prefetch — ungated hypothesis
 When: Third-party origins are used but `preconnect` isn't feasible for all of them.

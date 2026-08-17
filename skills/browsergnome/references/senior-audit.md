@@ -40,6 +40,9 @@ handoff reuses the existing measure→gate loop.
 - Read the matching `frameworks/*.md` / `bundlers/*.md` / `hosts/*.md` entries for the target's
   detected stack (from `.bgn/config.json`, written by Doctor) — stack-specific levers and known
   dead ends inform which catalog entries are actually likely to apply.
+- If `.bgn/config.json`'s `depPulse` is true and its cache is stale, dispatch the Dep Pulse subagent
+  per `references/dep-pulse.md` and continue immediately — never await it (same rule as Autoresearch's
+  Preflight; the audit has no measured capture window, so there's no CPU-contention branch to pick).
 
 ---
 
@@ -138,7 +141,12 @@ Doctor-initialized repo.
 
 Before opening the menu, print a short plain-text summary in the chat itself (not just the file) —
 one line per finding: title, how many routes/components it affects, expected cost. This is the
-user's only view of the findings unless they open the report by hand.
+user's only view of the findings unless they open the report by hand. If Dep Pulse was dispatched in
+Step 1, collect its result here and append its findings to both the report file and the chat summary,
+presented per `references/dep-pulse.md`'s "Presenting findings" section — architectural findings and
+pulse findings share this one report and one chat summary, not two separate surfaces. Record
+`depPulse: dispatched | deferred | cached | off` in the audit report the same way the Autoresearch
+Ledger does.
 
 Then present the findings as an **AskUserQuestion** multi-select menu. AskUserQuestion accepts at
 most 4 options, and a "Skip all" option must always be present — so at most 3 slots are available

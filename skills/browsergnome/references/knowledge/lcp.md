@@ -19,11 +19,13 @@ Evidence: LCP emits at most one candidate per animation frame. Text updates trig
 When: LCP element is an `<Image>` component in a Next.js App Router or Pages Router app.
 Do: Add the `preload` prop to the Image component: `<Image src="…" preload />`. This tells Next.js to emit a preload link in `<head>`. Note: as of Next.js 16, `priority` is **deprecated in favor of `preload`** — same mechanism, renamed prop; older code/docs referencing `priority` are now out of date.
 Evidence: Next.js documentation recommends this for the page's LCP image, over a manual `<link rel="preload">`. Source: https://nextjs.org/docs/app/api-reference/components/image#preload
+Guidance: optimize-image-priority
 
 ### `<link rel="preload" as="image">` for the LCP image — dead end (lab)
 When: The LCP image isn't discoverable by the browser preload scanner (set via JS/CSS, or deep in the byte stream — e.g. a `<video poster>`).
 Do: Add `<link rel="preload" as="image" href="…">` with correct `imagesrcset`/`imagesizes` and **always include `fetchpriority="high"`** (otherwise preload gets low priority by default for images); in App Router, `import { preload } from 'react-dom'; preload(url, { as: 'image', fetchPriority: 'high' })` server-side.
 Evidence: structurally valid (discoverable, high priority) but measured **lab-neutral on localhost** — the throttled dev environment lacks realistic TTFB/connection-setup latency, hiding any discovery-timing win. Did not clear the gate in-lab; matches this repo's `playbook.seed.json` dead-end entry. Worth retrying specifically on a real production network/CDN before assuming it's dead there too — that's a different measurement, not the same result. Sources: https://web.dev/blog/common-misconceptions-lcp and https://web.dev/articles/preload-critical-assets
+Guidance: optimize-preload-priority
 
 ### Removing an eager `modulepreload` for a dynamically-imported chunk — dead end
 When: A build tool (verified on Vite) auto-injects `<link rel="modulepreload">` for a chunk that's only ever reached via a genuine dynamic `import()` in source, and it looks like dead weight competing with the entry chunk for bandwidth on a throttled connection.

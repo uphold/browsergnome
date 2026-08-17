@@ -111,6 +111,12 @@ These have no single source of truth; an edit to one side silently breaks the ot
 - **Perf Map calibration** — `.github/workflows/pages.yml`'s `EXCALIDRAW_SHA` is pinned to the same
   commit as `references/perf-map.md`'s calibration note (527 modules / 16 hotspots). Bumping it means
   re-verifying the hotspot count.
+- **`depPulse` / `depPulseAutoApply`** must exist in both `SKILL.md`'s config schema table and
+  `doctor.mjs`'s `DEFAULT_CONFIG`. Same class as the chrome-devtools-mcp pin — nothing checks it, an
+  edit to one side silently breaks the other.
+- **`Guidance:` ids** in `references/knowledge/*.md` and `assets/playbook.seed.json` name
+  `modern-web-guidance` guide ids. Key on the bare `id` — upstream category directories churn. A
+  citation that stops resolving fails silently; nothing validates it.
 
 ## Project rules
 

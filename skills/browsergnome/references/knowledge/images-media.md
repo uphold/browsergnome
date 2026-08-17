@@ -9,6 +9,7 @@ Evidence: [Next.js image configuration](https://nextjs.org/docs/app/api-referenc
 When: Images lack explicit sizing, lazy loading, or the LCP image lacks priority.
 Do: Add `width`/`height` + `sizes` + `loading="lazy"` + `decoding="async"`; set `preload` only on the above-fold LCP image.
 Evidence: [Next.js Image component API](https://nextjs.org/docs/app/api-reference/components/image). The CLS half of this is what `cls.md`/`imageNoDims` covers.
+Guidance: optimize-image-priority
 
 ### WebM-first video — documented
 When: Video is served only as MP4.

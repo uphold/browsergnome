@@ -10,8 +10,9 @@ beats the measurement noise, else revert. Git is the memory; per-iteration commi
 It delegates measurement to `chrome-devtools-mcp` and owns the loop, gate, Ledger, Memory, Playbook, and
 Perf Map that no measurement tool provides on its own.
 
-Perf Map 3D, the LCP Attribution Map, the knowledge base, the seeded playbook, Doctor, and all four
-Autoresearch presets (`first-load`, `bundle-size`, `interaction`, `layout-shift`) are usable today.
+Perf Map 3D, the LCP Attribution Map, the knowledge base, the seeded playbook, Doctor, Dep Pulse, and
+all four Autoresearch presets (`first-load`, `bundle-size`, `interaction`, `layout-shift`) are usable
+today.
 `layout-shift`'s gate method (`stats.mjs`'s `gateOccurrence()`) runs a Fisher's-exact test on
 shift-occurrence rate for the bimodal case where the plain gate doesn't apply — see
 `references/presets.md`'s entry and `references/measurement.md`'s worked example for the numbers. See
@@ -132,13 +133,15 @@ tiers and the apportionment math — in `references/perf-map.md`'s "Attribution 
 
 ## Knowledge base
 
-`references/knowledge/INDEX.md` — symptom → file table, ~60 lines, always read first. Leaf topics
+`references/knowledge/INDEX.md` — symptom → file table, ~65 lines, always read first. Leaf topics
 (`lcp.md`, `cls.md`, `inp.md`, `bundle.md`, `fonts.md`, `images-media.md`, `caching.md`,
 `hydration-rsc.md`, `third-party.md`, `css.md`) are read **only** on a symptom match. Each entry is
 `When` / `Do` / `Evidence` with a status tier: `proven` (measured before/after) / `documented`
 (sourced, mechanism-verified, no measured delta) / `ungated hypothesis` (speculative) / `dead end`
-(tried, didn't clear the gate). A citation is not a measurement — don't upgrade an entry's tier without
-a real before/after number.
+(tried, didn't clear the gate), plus an optional `Guidance: <id>` line citing a `modern-web-guidance`
+guide — see `INDEX.md`'s "Upstream guidance" section for the full contract (present/absent behavior,
+Baseline-block use). A citation is not a measurement — don't upgrade an entry's tier without a real
+before/after number.
 
 ## Seeded playbook
 
@@ -147,7 +150,7 @@ a real before/after number.
 node "$BG/skills/browsergnome/scripts/build_playbook.mjs" .bgn
 ```
 
-Renders `assets/playbook.seed.json`'s 12 curated priors (6 proven wins, 3 dead ends, 3 ungated
+Renders `assets/playbook.seed.json`'s 12 curated priors (5 proven wins, 4 dead ends, 3 ungated
 hypotheses), each tagged `source: 'seeded'`, in visually separate sections from any `measured` (ledger-
 derived) rows — so a hand-authored prior never masquerades as evidence from the user's own repo. Once a
 `first-load` run has written to `.bgn/ledger/`, this same script merges both automatically.
@@ -163,7 +166,9 @@ chrome-devtools-mcp pin agrees with `references/tools.md`'s documented pin (a st
 check — it **cannot** verify the live tool surface, since that needs an actual MCP call; if a tool
 returns an unexpected shape mid-run, that's the live-drift signal, not this check), git state (via
 `parseGitState` — four states: `usable`/`no-repo`/`no-commits`/`detached`), the three stack axes (framework/bundler/host — unknown on any axis is fine, falls back to
-the generic knowledge base), and target URL reachability if `--url` is given.
+the generic knowledge base), whether the `modern-web-guidance` plugin is installed (nudges
+`/plugin install modern-web-guidance@googlechrome` if not — see the Knowledge base section above), and
+target URL reachability if `--url` is given.
 
 **Not implemented:** an exact-expected-tool-*list* assertion (only the version number is checked, not
 which tools that version actually exposes) or a preset-disable mechanism keyed off it. None of the four
@@ -172,7 +177,8 @@ depends on a tool that could disappear, not speculatively.
 
 `--init` bootstraps `.bgn/` if missing: `perf-memory.md`, `config.json` (defaults below, pre-filled with
 the detected stack axes), `ledger/`, `archive/`, `audit/` (Senior Engineer Audit reports — see below),
-`what-if/` (`/what-if` decision memos — see below), `.gitignore` (excludes `report.html`/`run-state.json`).
+`what-if/` (`/what-if` decision memos — see below), `.gitignore` (excludes
+`report.html`/`run-state.json`/`dep-pulse.json`).
 Re-running without `--init` on an already-bootstrapped repo just reports status and fills in a missing
 `config.json` if one was deleted.
 
@@ -184,7 +190,10 @@ loop, condensed:
 
 1. **Preflight.** Run Doctor (above) if `.bgn/` isn't bootstrapped yet. Load `.bgn/perf-memory.md`
    (known hotspots, don't rediscover) and `.bgn/playbook.md` if present (proven fix priors). Verify git
-   state is `usable` before any mutation (see `parseGitState` — never commit/reset otherwise).
+   state is `usable` before any mutation (see `parseGitState` — never commit/reset otherwise). If
+   `.bgn/config.json`'s `depPulse` is true and its cache is stale, dispatch the Dep Pulse subagent per
+   `references/dep-pulse.md` and continue immediately — never await it. (For `interaction`, defer this
+   dispatch until after the final capture, per `dep-pulse.md`'s CPU-contention rule.)
 2. **Baseline.** Measure `first-load`'s LCP **N times** (`.bgn/config.json`'s `runs`, default 5) via
    `references/presets.md`'s Drive sequence — each run opens a **fresh `isolatedContext`**
    (`new_page {url, isolatedContext: "first-load-baseline-<n>"}`), so cookies/cache/storage don't leak
@@ -194,7 +203,11 @@ loop, condensed:
    `.bgn/ledger/<timestamp>-first-load.md`).
 3. **Diagnose.** Consult `references/knowledge/lcp.md` (routed by the trace's `LCPBreakdown` insight —
    TTFB-dominated vs render-delay-dominated point at different fixes). Pick the **single dominant**
-   candidate fix — never stack fixes in one iteration.
+   candidate fix — never stack fixes in one iteration. If it carries a `Guidance:` id, retrieve that
+   `modern-web-guidance` guide (`npx modern-web-guidance@latest retrieve "<id>"`, or the plugin's
+   equivalent skill call) when installed; otherwise proceed on the local entry and note
+   `guidance <id> not installed` on the finding. See `references/knowledge/INDEX.md`'s "Upstream
+   guidance" section for the full contract.
 4. **Propose + apply.** One atomic change. Before applying, snapshot each file about to change.
    Check the touched paths against `measurement.md`'s rebuild-fallback list — interleaved (`ABABAB`)
    unless a bundler/framework config or `package.json` is touched, in which case sequential (`AAAA`→
@@ -214,7 +227,11 @@ loop, condensed:
    - `one-commit` — `git reset --soft <baseline-sha>` + one summary commit at the end of the run.
    - `no-commit` — `git reset --soft <baseline-sha>`, leaving changes staged for the user to review.
 9. **Report.** Distill each result into one line in `.bgn/perf-memory.md`. Run `build_playbook.mjs .bgn`
-   to fold the new ledger entry into `.bgn/playbook.md`.
+   to fold the new ledger entry into `.bgn/playbook.md`. Collect the Dep Pulse result (if dispatched)
+   and present its findings per `references/dep-pulse.md`. If `.bgn/config.json`'s `budget` is already
+   spent on internal hypotheses, researching a pulse finding requires its own explicit "continue?" —
+   never silently exceed budget. Record `depPulse: dispatched | deferred | cached | off` in the Ledger
+   entry.
 
 The trace-parsing half (LCP/CLS/TTFB/scriptTimings extraction, the gate math) and the full step 2/5 drive
 sequence (`new_page`+`isolatedContext` → `emulate` → `performance_start_trace` → `close_page`, throttled
@@ -308,6 +325,8 @@ Display `.bgn/config.json`, let the user edit, write back. Bootstrapped by Docto
 | `interleaved` | `true` | ABABAB by default — see `measurement.md`'s fallback rule |
 | `framework` / `bundler` / `host` | detected | written by Doctor, three independent axes, `unknown` is fine |
 | `emulate` | `{cpuThrottlingRate:4, networkConditions:"Slow 4G", viewport:"1280x720x1"}` | fixed conditions for comparable runs |
+| `depPulse` | `true` | does the Dep Pulse subagent run at all — see `references/dep-pulse.md` |
+| `depPulseAutoApply` | `true` | may a benign patch bump skip the pre-install confirm (3-condition carve-out; 2 more conditions still gate KEEP) |
 
 ## Senior Engineer Audit (menu item 5 — works today)
 
@@ -329,6 +348,12 @@ existing measure→gate loop.
 - **Honest gate mapping.** Web has four gate presets (`first-load`, `bundle-size`, `interaction`,
   `layout-shift` — see `references/presets.md`), not RN's `re-renders`/`listing`. A finding without a
   clean mapping is marked **advisory**, not force-fit to a gate that doesn't measure it.
+
+The audit's own Step 1 (Grounding) also dispatches the Dep Pulse subagent (same condition as
+Autoresearch's Preflight above), and Step 6 (Write Report + Present Menu) surfaces pulse findings
+alongside architectural ones in the same report and chat summary — see `references/senior-audit.md`'s
+Step 1 and Step 6 for the exact wiring. Dep Pulse is scoped to Autoresearch and Senior Engineer Audit
+only, the two modes with a report step to surface findings into. See `references/dep-pulse.md`.
 
 **Protocol:** read `references/senior-audit.md` before running (7-step: ground → substrate → reason
 → gate → emit → choose → fix & prove).
@@ -371,13 +396,18 @@ memo is written, not assumed clean because the revert steps ran.
 - `references/measurement.md` — N-run protocol (with a real measured warmup-discard example),
   interleaved A/B design + the mechanical rebuild-fallback rule, gate math, and why `bundle-size`
   deliberately skips N-run characterization (deterministic builds, no noise to measure).
-- `references/knowledge/` — the hypothesis-space brain (`INDEX.md` first, leaf files on match only).
+- `references/knowledge/` — the hypothesis-space brain (`INDEX.md` first, leaf files on match only),
+  cross-referenced to `modern-web-guidance` guide ids via optional `Guidance:` lines — see `INDEX.md`'s
+  "Upstream guidance" section for the presence/absence contract.
 - `references/senior-audit.md` — Senior Engineer Audit protocol (menu item 5): grounding,
   blast-radius ranking, signal-vs-noise gate, report format, choose-and-fix flow.
 - `references/architectural-perf-catalog.md` — the audit's reasoning corpus: 10 anti-pattern
   entries with symptom/cost/how-to-spot/gate-preset (or honest advisory note) each.
 - `references/what-if.md` — the `/what-if` command's protocol: scratch branch, always-revert
   guarantee (verified, not assumed), memo format, buildable scenarios, migration-refusal rule.
+- `references/dep-pulse.md` — the Dep Pulse subagent's protocol: perf-spine derivation, registry
+  resolve + changelog read, signal-vs-noise, consent gate (and its benign-patch carve-out), acting on
+  a chosen finding through the gate, revert mechanism, unattended/CI behavior.
 - `assets/playbook.seed.json` — 12 seeded priors, `source: 'seeded'`.
 - `assets/trace.sample.json.gz`, `assets/trace.cls-sample.json.gz`, `assets/trace.multi-lcp-sample.json.gz`,
   `assets/trace.eventtiming-sample.json.gz`, `assets/trace.interaction-sample.json.gz` — real captured
