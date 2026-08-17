@@ -14,6 +14,7 @@
 
 ### H1 — {{hypothesis}}
 - **Guide:** {{guide}}
+- **Guidance:** {{guidance}}
 - **Change (atomic):** {{change_description}}  ({{files_touched}})
 - **Measurement mode:** {{mode}} (interleaved ABABAB, or sequential AAAA→BBBB if the diff needed a
   rebuild — see references/measurement.md's rebuild-fallback list; `n/a (deterministic build)` for
@@ -34,3 +35,4 @@
 - **Net delta vs baseline:** {{net_delta}}
 - **Commits:** {{commit_list}}
 - **Reverted dead-ends (don't retry):** {{reverted_list}}
+- **Dep Pulse:** {{dep_pulse}} (`dispatched` | `deferred` | `cached` | `off` — see references/dep-pulse.md)

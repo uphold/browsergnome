@@ -27,6 +27,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { execSync, execFileSync } from 'node:child_process';
+import os from 'node:os';
 
 // ── Pure detection functions (exported; no I/O — all inputs are strings/booleans) ─
 
@@ -170,6 +171,8 @@ const DEFAULT_CONFIG = (axes) => ({
     networkConditions: null,  // null | 'Offline' | 'Slow 3G' | 'Fast 3G' | 'Slow 4G' | 'Fast 4G'
     viewport: '1280x720x1',
   },
+  depPulse: true,          // dispatch the Dep Pulse subagent — see references/dep-pulse.md
+  depPulseAutoApply: true, // benign patch bumps (conditions 1-3) skip the pre-install confirm
   prodUrl: null,     // production origin for the LCP Attribution Map's CrUX field-data tier — auto-detected/prompted at build time if unset
   cruxApiKey: null,  // optional Google Cloud API key for the canonical CrUX API; omit to use keyless PageSpeed Insights (same data, no key)
 });
@@ -177,6 +180,7 @@ const DEFAULT_CONFIG = (axes) => ({
 const GITIGNORE_CONTENT = `# browsergnome — generated run artifacts (not committed with the app)
 report.html
 run-state.json
+dep-pulse.json
 `;
 
 function bootstrap(axes) {
@@ -193,10 +197,17 @@ function bootstrap(axes) {
   if (!fs.existsSync(cfg)) fs.writeFileSync(cfg, JSON.stringify(DEFAULT_CONFIG(axes), null, 2) + '\n');
 
   const gi = path.join(dir, '.gitignore');
-  if (!fs.existsSync(gi)) fs.writeFileSync(gi, GITIGNORE_CONTENT);
+  if (!fs.existsSync(gi)) {
+    fs.writeFileSync(gi, GITIGNORE_CONTENT);
+  } else {
+    // repo bootstrapped before a line was added to GITIGNORE_CONTENT — backfill, don't just skip
+    const existing = fs.readFileSync(gi, 'utf8');
+    const missing = GITIGNORE_CONTENT.split('\n').filter(l => l && !l.startsWith('#') && !existing.includes(l));
+    if (missing.length) fs.appendFileSync(gi, (existing.endsWith('\n') ? '' : '\n') + missing.join('\n') + '\n');
+  }
 
   console.log(`  bootstrapped ${path.relative(repo, dir) || '.bgn'}/ (perf-memory.md, config.json, ledger/, archive/, audit/, what-if/)`);
-  console.log(`  .bgn/.gitignore created — report.html and run-state.json are gitignored`);
+  console.log(`  .bgn/.gitignore created — report.html, run-state.json, and dep-pulse.json are gitignored`);
 }
 
 // ── Self-test (CI contract — short-circuits before main() I/O) ────────────────
@@ -259,6 +270,15 @@ function selfTest() {
     check('drifted pins disagree', r2.agree, false);
     check('drifted pins → both values reported', [r2.mcpPin, r2.docsPin], ['1.7.0', '1.6.0']);
     check('missing file → no agreement, no crash', checkVersionPin(null, null).agree, false);
+  }
+
+  // DEFAULT_CONFIG — depPulse keys
+  {
+    const cfg = DEFAULT_CONFIG({ framework: 'unknown', bundler: 'unknown', host: 'unknown' });
+    check('DEFAULT_CONFIG.depPulse defaults true', cfg.depPulse, true);
+    check('DEFAULT_CONFIG.depPulseAutoApply defaults true', cfg.depPulseAutoApply, true);
+    check('GITIGNORE_CONTENT covers dep-pulse.json (bootstrap() backfills this on old repos)',
+      GITIGNORE_CONTENT.includes('dep-pulse.json'), true);
   }
 
   // parseUrlProbe
@@ -339,6 +359,9 @@ function main() {
   console.log(`  ${warn} live tool-surface drift (added/removed/renamed tools) can't be checked from this script —`);
   console.log(`        it needs a live MCP call. If a tool call returns an unexpected shape mid-run, that's the signal;`);
   console.log(`        re-verify against references/tools.md rather than assuming the pin still holds.`);
+
+  const mwgInstalled = sh(`find "${os.homedir()}/.claude/plugins" -path "*/modern-web-guidance*" -name "*.md" -maxdepth 6 2>/dev/null | head -1`);
+  console.log(`  ${mwgInstalled ? ok(true) : warn} modern-web-guidance${mwgInstalled ? '' : ' — install: /plugin marketplace add GoogleChrome/modern-web-guidance && /plugin install modern-web-guidance@googlechrome'}`);
 
   // ── Git state ─────────────────────────────────────────────────────────────
   const gitInsideWorkTree = sh('git rev-parse --is-inside-work-tree') === 'true';

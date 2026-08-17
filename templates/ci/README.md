@@ -131,6 +131,10 @@ from step 0:
 
 Run `/browsergnome` -> **Configurations** to edit this interactively.
 
+Dep Pulse (perf-relevant dependency-release research) is report-only in unattended runs — it never
+applies a bump without an interactive consent prompt, headless or not — and can be turned off entirely
+with `"depPulse": false`.
+
 ### Tuning the gate floor
 
 The build-only template uses `--min-effect 1024` bytes (1KB) as the absolute improvement floor,
