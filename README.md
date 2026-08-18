@@ -147,11 +147,12 @@ on KEEP or reverted on REVERT — no human babysitting the loop between iteratio
 `/what-if` (a separate command) answers "is this worth doing at all?" — the same
 measure→apply→re-measure→gate loop, but always reverts and writes a decision memo instead of a commit.
 
-**Dep Pulse** runs alongside Autoresearch and Senior Engineer Audit: a read-only subagent resolves the
-app's perf-critical dependencies against the registry, reads the real release notes, and surfaces
-genuinely perf-relevant bumps — majors included — as a table of what each brings and what it could
-break. Nothing installs without the user picking it from that table first; anything green-lit goes
-through the same measure→gate loop as every other fix.
+**Dep Pulse** resolves the app's perf-critical dependencies against the registry, reads the real
+release notes, and surfaces genuinely perf-relevant bumps — majors included — as a table of what each
+brings and what it could break. It runs two ways: ambient, alongside Autoresearch and Senior Engineer
+Audit as a read-only subagent, or standalone, on a direct dependency ask ("analyze my deps"), inline
+with no subagent needed. Nothing installs without the user picking it from that table first; anything
+green-lit goes through the same measure→gate loop as every other fix.
 
 ## How it works
 

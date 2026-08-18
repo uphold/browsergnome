@@ -171,11 +171,21 @@ const DEFAULT_CONFIG = (axes) => ({
     networkConditions: null,  // null | 'Offline' | 'Slow 3G' | 'Fast 3G' | 'Slow 4G' | 'Fast 4G'
     viewport: '1280x720x1',
   },
-  depPulse: true,          // dispatch the Dep Pulse subagent — see references/dep-pulse.md
+  depPulse: true,          // dispatch the ambient Dep Pulse subagent (Autoresearch Preflight / Senior Engineer Audit) — see references/dep-pulse.md. A direct dependency ask runs Dep Pulse standalone regardless of this flag.
   depPulseAutoApply: true, // benign patch bumps (conditions 1-3) skip the pre-install confirm
   prodUrl: null,     // production origin for the LCP Attribution Map's CrUX field-data tier — auto-detected/prompted at build time if unset
   cruxApiKey: null,  // optional Google Cloud API key for the canonical CrUX API; omit to use keyless PageSpeed Insights (same data, no key)
 });
+
+// Fills only top-level keys missing from an existing config.json — never overwrites a user's value,
+// never descends into nested objects (e.g. emulate). Mirrors the .gitignore backfill below: an old
+// .bgn/ predates newer DEFAULT_CONFIG keys and would otherwise read them as undefined forever.
+function backfillConfig(existing, defaults) {
+  if (!existing || typeof existing !== 'object') existing = {};
+  const added = Object.keys(defaults).filter(k => !(k in existing));
+  const config = added.length ? { ...defaults, ...existing } : existing;
+  return { config, added };
+}
 
 const GITIGNORE_CONTENT = `# browsergnome — generated run artifacts (not committed with the app)
 report.html
@@ -193,8 +203,10 @@ function bootstrap(axes) {
   const mem = path.join(dir, 'perf-memory.md');
   if (!fs.existsSync(mem)) fs.writeFileSync(mem, PERF_MEMORY_HEADER(path.basename(repo)));
 
+  // .bgn/ doesn't exist yet at this point (bootstrap only runs when !bgnExists in main()),
+  // so config.json can't already exist either — no backfill branch needed here.
   const cfg = path.join(dir, 'config.json');
-  if (!fs.existsSync(cfg)) fs.writeFileSync(cfg, JSON.stringify(DEFAULT_CONFIG(axes), null, 2) + '\n');
+  fs.writeFileSync(cfg, JSON.stringify(DEFAULT_CONFIG(axes), null, 2) + '\n');
 
   const gi = path.join(dir, '.gitignore');
   if (!fs.existsSync(gi)) {
@@ -279,6 +291,17 @@ function selfTest() {
     check('DEFAULT_CONFIG.depPulseAutoApply defaults true', cfg.depPulseAutoApply, true);
     check('GITIGNORE_CONTENT covers dep-pulse.json (bootstrap() backfills this on old repos)',
       GITIGNORE_CONTENT.includes('dep-pulse.json'), true);
+  }
+
+  // backfillConfig — fills missing top-level keys, never overwrites present ones
+  {
+    const defaults = { a: 1, b: 2, c: 3 };
+    const r1 = backfillConfig({ a: 1, b: 99 }, defaults);
+    check('missing key added', r1.config.c, 3);
+    check('present key not overwritten', r1.config.b, 99);
+    check('added lists only the missing key', r1.added, ['c']);
+    const r2 = backfillConfig({ a: 1, b: 2, c: 3 }, defaults);
+    check('nothing missing → added is empty', r2.added, []);
   }
 
   // parseUrlProbe
@@ -422,7 +445,19 @@ function main() {
       fs.writeFileSync(cfgPath, JSON.stringify(DEFAULT_CONFIG(axes), null, 2) + '\n');
       console.log(`  ${ok(true)} .bgn/config.json created with defaults`);
     } else {
-      console.log(`  ${ok(true)} .bgn/config.json present`);
+      let parsed = null;
+      try { parsed = JSON.parse(read(cfgPath)); } catch {}
+      if (parsed === null) {
+        console.log(`  ${ok(false)} .bgn/config.json is not valid JSON — fix or delete it, then re-run --init`);
+      } else {
+        const { config, added } = backfillConfig(parsed, DEFAULT_CONFIG(axes));
+        if (added.length) {
+          fs.writeFileSync(cfgPath, JSON.stringify(config, null, 2) + '\n');
+          console.log(`  ${ok(true)} .bgn/config.json backfilled with new defaults: ${added.join(', ')}`);
+        } else {
+          console.log(`  ${ok(true)} .bgn/config.json present`);
+        }
+      }
     }
   } else if (doInit) {
     bootstrap(axes);

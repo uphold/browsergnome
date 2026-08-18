@@ -66,7 +66,10 @@ to load" → `first-load`. "Shrink my bundle" / "my JS is too big" → `bundle-s
 UI feels laggy when I click X" → `interaction`. "Fix my CLS" / "content keeps jumping" → `layout-shift`
 (check the target's baseline shift-occurrence rate first, per `references/presets.md`'s entry — below
 ~40% at n=10, say so and offer Perf Map 3D instead). A holistic/architectural ask ("what's
-architecturally wrong here", "do a senior-level review") → Senior Engineer Audit.
+architecturally wrong here", "do a senior-level review") → Senior Engineer Audit. A dependency ask
+("analyze my deps", "dependency recommendations", "what should I upgrade", "are my deps costing me
+perf") → Dep Pulse, standalone — run it directly per `references/dep-pulse.md`'s "Standalone" section,
+never routed through Senior Engineer Audit or a Perf Map scan.
 
 ## Locating scripts
 
@@ -144,6 +147,17 @@ Node color = class (network/chunk/module); opacity = confidence (solid **measure
 **apportioned**) — both explained in the legend and on click. No bundle stats (Vite, Turbopack) degrades
 to a chunk-only render, shown as a first-class banner, not an error. Full data-layer detail — confidence
 tiers and the apportionment math — in `references/perf-map.md`'s "Attribution confidence" section.
+
+## Dep Pulse (works today, no menu item)
+
+A read-only subagent that resolves the target's perf-critical dependencies against the registry, reads
+the actual release notes for what's newer, and judges perf relevance to this app's detected
+architecture — majors included. It runs two ways: **ambient**, fired-and-forgotten during Autoresearch
+Preflight and Senior Engineer Audit Step 1 (see those sections below and `references/dep-pulse.md`'s
+Invariants), or **standalone**, invoked directly by a dependency ask and run inline in the main agent
+rather than dispatched as a subagent — `references/dep-pulse.md`'s "Standalone" section has the full
+protocol. Same as the LCP Attribution Map above, it has no menu item; it's reached by intent, not a
+number.
 
 ## Knowledge base
 
@@ -339,7 +353,7 @@ Display `.bgn/config.json`, let the user edit, write back. Bootstrapped by Docto
 | `interleaved` | `true` | ABABAB by default — see `measurement.md`'s fallback rule |
 | `framework` / `bundler` / `host` | detected | written by Doctor, three independent axes, `unknown` is fine |
 | `emulate` | `{cpuThrottlingRate:1, networkConditions:null, viewport:"1280x720x1"}` | no throttle by default (DevTools/Lighthouse-adjacent numbers); same conditions across all N runs is what matters for the gate, not which conditions — set `cpuThrottlingRate`/`networkConditions` here to opt into worst-case/mobile-network sensitivity |
-| `depPulse` | `true` | does the Dep Pulse subagent run at all — see `references/dep-pulse.md` |
+| `depPulse` | `true` | does the *ambient* Dep Pulse dispatch (Autoresearch Preflight, Senior Engineer Audit) run — see `references/dep-pulse.md`. A direct dependency ask always runs Dep Pulse standalone, regardless of this flag. |
 | `depPulseAutoApply` | `true` | may a benign patch bump skip the pre-install confirm (3-condition carve-out; 2 more conditions still gate KEEP) |
 
 ## Senior Engineer Audit (menu item 5 — works today)
@@ -366,8 +380,10 @@ existing measure→gate loop.
 The audit's own Step 1 (Grounding) also dispatches the Dep Pulse subagent (same condition as
 Autoresearch's Preflight above), and Step 6 (Write Report + Present Menu) surfaces pulse findings
 alongside architectural ones in the same report and chat summary — see `references/senior-audit.md`'s
-Step 1 and Step 6 for the exact wiring. Dep Pulse is scoped to Autoresearch and Senior Engineer Audit
-only, the two modes with a report step to surface findings into. See `references/dep-pulse.md`.
+Step 1 and Step 6 for the exact wiring. Autoresearch and Senior Engineer Audit are Dep Pulse's two
+*ambient* dispatch points — the modes with a report step to surface findings into mid-run. A direct
+dependency ask runs Dep Pulse standalone instead (see the "Dep Pulse" section above). See
+`references/dep-pulse.md`.
 
 **Protocol:** read `references/senior-audit.md` before running (7-step: ground → substrate → reason
 → gate → emit → choose → fix & prove).
@@ -419,9 +435,10 @@ memo is written, not assumed clean because the revert steps ran.
   entries with symptom/cost/how-to-spot/gate-preset (or honest advisory note) each.
 - `references/what-if.md` — the `/what-if` command's protocol: scratch branch, always-revert
   guarantee (verified, not assumed), memo format, buildable scenarios, migration-refusal rule.
-- `references/dep-pulse.md` — the Dep Pulse subagent's protocol: perf-spine derivation, registry
-  resolve + changelog read, signal-vs-noise, consent gate (and its benign-patch carve-out), acting on
-  a chosen finding through the gate, revert mechanism, unattended/CI behavior.
+- `references/dep-pulse.md` — Dep Pulse's protocol: perf-spine derivation, registry resolve +
+  changelog read, signal-vs-noise, consent gate (and its benign-patch carve-out), acting on a chosen
+  finding through the gate, revert mechanism, unattended/CI behavior, and the standalone (inline, no
+  subagent) entrypoint for a direct dependency ask.
 - `assets/playbook.seed.json` — 12 seeded priors, `source: 'seeded'`.
 - `assets/trace.sample.json.gz`, `assets/trace.cls-sample.json.gz`, `assets/trace.multi-lcp-sample.json.gz`,
   `assets/trace.eventtiming-sample.json.gz`, `assets/trace.interaction-sample.json.gz` — real captured

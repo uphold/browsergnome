@@ -123,6 +123,53 @@ Return. Do nothing else.
 
 ---
 
+## Standalone (works today, no menu item)
+
+A direct dependency ask ("analyze my deps", "what should I upgrade", "are my deps costing me perf")
+runs Dep Pulse **inline in the main agent, not as a subagent** — the same "works today, invoked
+directly, no menu item" shape as the LCP Attribution Map (`SKILL.md`'s LCP Attribution Map section).
+The user asked and is waiting: there is no measured window to protect, and the main agent already
+holds the context a cold subagent would have to re-derive. This section's inline dispatch and the
+Protocol section's fire-and-forget subagent dispatch are two different invocations of the same six
+steps — inline is not a fallback for the ambient path. The "Never inline it into the main loop as a
+fallback" rule under Unattended/CI is scoped to the *ambient* dispatch during a measured Autoresearch
+or audit run, where added host load would bias the gate; it does not apply here.
+
+**Preflight.** `.bgn/` must exist — the spine derivation needs the `framework`/`bundler`/`host` axes
+from `config.json`, and Step 6 writes into `.bgn/`. If missing, run
+`node "$BG/skills/browsergnome/scripts/doctor.mjs" --init` first.
+
+**What runs, in order:**
+
+1. Derive the checked set per **"The spine — reuse, don't author a second list"** above (including
+   reading `perf_scan.mjs:108-111`'s `CONFIG.heavyLibs` at runtime — don't skip this because it's not
+   literally inside "Steps 1–6"; those steps only ever say "per spine package").
+2. Protocol Steps 1–6 above, unchanged. `$CLAUDE_PLUGIN_ROOT` and the config axes are already in hand
+   inline, so "Dispatching the subagent"'s handoff list (below) doesn't apply here — that list is for
+   briefing a cold subagent, which this isn't.
+3. The existing **"Presenting findings (end of run)"** section: chat summary first, then the
+   AskUserQuestion findings menu with its `preview` table.
+
+**Cache hit (Step 1).** Say plainly that the findings are cached and give `checkedAt`, so freshness is
+never ambiguous to the user.
+
+**Invariant 5 inverts here.** The Invariants section's "no network, registry error, rate limit, or
+empty result degrades to 'no findings' — silently" is correct for the ambient dispatch, where a
+measurement loop must never notice a failure. Standalone, the user is directly waiting on the answer:
+a failed `npm outdated`, a rate limit, or an unreachable changelog is **reported plainly** — never
+rendered as a quiet empty table. Invariants 1–4 (no install without the consent gate, no
+build/branch/commit, read-only on `package.json` + lockfile, exactly one file written) hold unchanged.
+
+**Acting on a chosen finding** is the existing section below, unchanged — same consent gate, same
+gate-mapped measurement, same report-only path for codemod-requiring majors.
+
+**`depPulse: false` in `.bgn/config.json` turns off the *ambient* dispatch only** (Autoresearch
+Preflight, Senior Engineer Audit Step 1) — see `SKILL.md`'s config schema table. A direct ask is an
+explicit request that overrides it: run Dep Pulse and say the ambient dispatch is disabled, rather
+than refusing.
+
+---
+
 ## Honesty tier
 
 Every pulse finding enters as an **ungated hypothesis carrying its changelog citation**. Per

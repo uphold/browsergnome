@@ -132,8 +132,8 @@ from step 0:
 Run `/browsergnome` -> **Configurations** to edit this interactively.
 
 Dep Pulse (perf-relevant dependency-release research) is report-only in unattended runs — it never
-applies a bump without an interactive consent prompt, headless or not — and can be turned off entirely
-with `"depPulse": false`.
+applies a bump without an interactive consent prompt, headless or not — and its ambient dispatch during
+a run can be turned off with `"depPulse": false`.
 
 ### Tuning the gate floor
 
