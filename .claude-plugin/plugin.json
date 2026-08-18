@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "browsergnome",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "The autonomous JS web performance engineer. Orchestrates chrome-devtools-mcp into one propose → measure → keep/revert loop — with an LCP Attribution Map, a live HTML run report, configurable commit mode, and per-repo performance memory.",
   "author": {
     "name": "Xavier",
