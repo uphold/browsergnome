@@ -1,0 +1,241 @@
+name: browsergnome perf autopilot — browser (weekly)
+# BROWSER template — measures all three implemented presets: first-load, bundle-size, interaction.
+# (layout-shift is not implemented yet — see references/presets.md.) Runs headless Chrome on plain
+# ubuntu-latest — no emulator, no KVM, no device tier. This is the actual advantage web has over
+# React Native here: there is no flaky "boot a simulator" step at all.
+#
+# Only use this if the build-only template (browsergnome-autopilot-build.yml) isn't measuring the
+# findings that matter most to your app.
+#
+# Setup (one-time):
+#   1. Copy this file to .github/workflows/ in your web repo.
+#   2. Add ANTHROPIC_API_KEY as a repo secret.
+#   3. Enable "Allow GitHub Actions to create and approve pull requests" in repo Settings ->
+#      Actions -> General -> Workflow permissions. (Required for gh pr create to succeed.)
+#   4. Replace the plugin_marketplaces URL with the browsergnome release you trust.
+#   5. Fill in BUILD_CMD / START_CMD / TARGET_URL below (or set them as repo variables) for
+#      how your app builds and serves locally — this template has no way to infer them.
+#   6. Characterize k/minEffect ON THIS RUNNER before trusting the gate here (see "Runner noise
+#      characterization" below) and commit the result to .bgn/config.json — do not inherit the
+#      laptop-derived defaults in references/measurement.md as-is.
+#   7. Tune cron, top_findings, max_iters, preset. Set vars.BROWSERGNOME_GOAL for a fixed goal.
+#
+# See templates/ci/README.md for the full adoption guide.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"        # Mondays 06:00 UTC — tune to taste
+  workflow_dispatch:
+    inputs:
+      top_findings:
+        description: "How many top debt findings to attempt"
+        default: "3"
+      max_iters:
+        description: "Max autoresearch iterations (budget cap)"
+        default: "4"
+      preset:
+        description: "Preset to run (first-load / bundle-size / interaction / auto)"
+        default: "auto"
+      custom_prompt:
+        description: |
+          Optional: a specific goal instead of top-X (e.g. "fix the LCP on the pricing page").
+          Leave blank for the default top-X run. Set vars.BROWSERGNOME_GOAL for scheduled cron runs.
+        default: ""
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  autopilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # ubuntu-latest ships a system Chrome, but chrome-devtools-mcp's own Puppeteer dependency
+      # resolves its own Chrome-for-Testing binary independently and doesn't automatically use the
+      # system one — an explicit, version-pinned setup step is more reproducible than depending on
+      # whichever Chrome happens to already be on the runner image (that image's bundled version
+      # moves with GitHub's own update schedule, not this repo's). Pin a version here the same way
+      # .mcp.json pins chrome-devtools-mcp's own version — don't float either one on @latest.
+      - name: Set up Chrome
+        uses: browser-actions/setup-chrome@c785b87e244131f27c9f19c1a33e2ead956ab7ce # v1
+        id: setup-chrome
+        with:
+          chrome-version: stable
+
+      # Build and serve the app. This template cannot infer your build/start commands — fill these
+      # in via repo variables (Settings -> Variables -> Actions) or edit the run: block directly.
+      - name: Build the app
+        run: ${{ vars.BROWSERGNOME_BUILD_CMD || 'npm run build' }}
+
+      - name: Start the app
+        run: |
+          (${{ vars.BROWSERGNOME_START_CMD || 'npm start' }} &>/tmp/bg-app.log &)
+          echo "TARGET_URL=${{ vars.BROWSERGNOME_TARGET_URL || 'http://localhost:3000' }}" >> $GITHUB_ENV
+          # Poll until the app actually answers — a build that "succeeded" doesn't mean the server
+          # is accepting connections yet, especially for a cold Next.js/Remix production start.
+          for i in $(seq 1 60); do
+            curl -sf "${{ vars.BROWSERGNOME_TARGET_URL || 'http://localhost:3000' }}" -o /dev/null && break
+            sleep 2
+          done
+
+      - uses: anthropics/claude-code-action@4d7e1f0cd85743fdc93b1c8040ab54395da024e2 # v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Replace with the browsergnome fork/release you trust.
+          plugin_marketplaces: https://github.com/xavi-999/browsergnome.git
+          plugins: browsergnome@browsergnome
+          # chrome-devtools-mcp is bundled via the plugin's .mcp.json. CHROME_PATH (set in env:
+          # below) is passed through in case chrome-devtools-mcp's underlying Puppeteer launcher
+          # honors it to use the runner's pinned Chrome instead of resolving its own binary — this
+          # specific env-var mechanism has NOT been confirmed against a live chrome-devtools-mcp
+          # process in this project (unlike the tool surface in references/tools.md, which was).
+          # If browser launch fails or silently uses a different Chrome, check chrome-devtools-mcp's
+          # actual CLI flags for an explicit executable-path override before assuming this works.
+          claude_args: >-
+            --model claude-sonnet-4-6
+            --max-turns 100
+            --allowedTools Read,Edit,Write,Bash(node *),Bash(npx *),Bash(npm ci),Bash(npm run *),Bash(npm start*),Bash(git *),Bash(gh pr create *),Bash(gh pr list *),Bash(find *),Bash(wc *),Bash(cat *),Bash(bc *),Bash(curl *)
+          prompt: |
+            # browsergnome CI autopilot — browser (first-load / bundle-size / interaction)
+
+            Run NON-INTERACTIVELY. Never present a menu or call AskUserQuestion.
+            The app is already built and serving at $TARGET_URL (polled reachable before this step
+            started). chrome-devtools-mcp is available via MCP (bundled with the plugin, pointed at
+            CHROME_PATH). Scripts are at ${CLAUDE_PLUGIN_ROOT}/skills/browsergnome/scripts/
+            Read references/tools.md before invoking any chrome-devtools-mcp tool, and
+            references/measurement.md's "Browser instance hygiene" section before driving any
+            loop — close each run's page (`close_page`) before opening the next; never let more
+            than one measurement page stay open across a run.
+
+            ## 0. Runner noise characterization (first run on this runner only)
+            If .bgn/config.json does NOT yet have a `runnerCharacterized: true` field: this is the
+            first run on this runner class. Run first-load's N=10 real-capture protocol
+            (references/measurement.md's "Observed noise — first-load" section) against the
+            already-running $TARGET_URL, unchanged, to get THIS runner's noise band — do not reuse
+            the laptop-derived 30ms/10ms numbers in measurement.md, they were characterized
+            elsewhere and a shared CI runner's noise profile is a separate unknown (measurement.md
+            says this explicitly). Write the resulting minEffect/k into .bgn/config.json along with
+            `runnerCharacterized: true`, commit that change on its own
+            (`chore(browsergnome): characterize gate noise on CI runner`), then continue to step 1.
+            If it's already `true`, skip straight to step 1 and use the committed values.
+
+            ## 1. Create branch
+            Create and switch to branch `browsergnome/autopilot-$(date +%Y-%m-%d)`.
+            Record BASELINE_SHA=$(git rev-parse HEAD).
+
+            ## 2. Bootstrap .bgn/
+            node "${CLAUDE_PLUGIN_ROOT}/skills/browsergnome/scripts/doctor.mjs" --init --url "$TARGET_URL"
+            Errors here are non-fatal — continue even if some checks warn.
+
+            ## 3. Map debt
+            node "${CLAUDE_PLUGIN_ROOT}/skills/browsergnome/scripts/perf_scan.mjs" . --out /tmp/bg-graph.json
+            Read /tmp/bg-graph.json. The `top3` array and full `nodes` array (sorted by debt desc)
+            list hotspots: { file, debt, preset, why, paste }.
+
+            ## 4. Select targets
+            If env $CUSTOM_PROMPT is non-empty -> use it as the autoresearch goal; skip to step 5.
+            If env $PRESET is "auto" or empty -> select the overall top min($TOP_FINDINGS, budget)
+              hotspot findings regardless of preset (first-load/bundle-size/interaction are all
+              measurable here).
+            If env $PRESET names a specific preset -> filter to that preset, take top $TOP_FINDINGS.
+            Collect non-selected top hotspots as DEFERRED for the PR body.
+            If zero matching findings: print "no matching findings — exiting without PR" and exit 0.
+
+            ## 5. Autoresearch loop — one fix at a time, capped at min($MAX_ITERS, budget) total
+            For each selected finding, use its preset to route measurement — follow
+            references/presets.md's exact Drive sequence for that preset (fixed `emulate` settings,
+            fresh `isolatedContext` per run, `close_page` after each). For each iteration:
+
+              a) PROPOSE one atomic fix per the preset's candidate fixes (see presets.md /
+                 references/knowledge/).
+              b) MEASURE baseline metric (N runs from .bgn/config.json, one warmup discarded per
+                 measurement.md — first-load/interaction only; bundle-size is a single build, see
+                 references/measurement.md's "Observed noise — bundle-size" section).
+              c) Apply fix.
+              d) MEASURE candidate metric (same N runs).
+              e) GATE — run stats.mjs and parse the JSON `decision` field:
+                   node "${CLAUDE_PLUGIN_ROOT}/skills/browsergnome/scripts/stats.mjs" \
+                     --baseline "<baseline_values_csv>" --candidate "<candidate_values_csv>" \
+                     --min-effect <preset_floor_from_config> --k <k_from_config> --direction lower --unit <ms|bytes>
+                 stats.mjs always exits 0; read its JSON stdout and check `decision`. Read the
+                 min-effect/k floors from .bgn/config.json (step 0's runner-characterized values),
+                 never the laptop defaults in measurement.md directly.
+
+              f) If decision == "KEEP":
+                   git add <only the files you modified — never git add -A>
+                   git commit -m "perf(<target>/<preset>): <one-line description> [browsergnome]"
+                   Increment KEPT_COUNT.
+
+              g) If decision == "REVERT":
+                   git restore .
+                   Log the REVERT with the stats output for the PR "Reverted" list.
+
+            ## 6. Squash kept commits into one, then open PR
+            If KEPT_COUNT == 0: print "no improvements cleared the gate — no PR" and exit 0.
+
+            Otherwise:
+              git reset --soft "$BASELINE_SHA"
+              Summarize the net gains across all kept iterations (e.g. "-180ms LCP, -6.1% bundle")
+              git commit -m "perf: browsergnome weekly autopilot — <summary>"
+              git push -u origin HEAD
+
+            Open the PR with gh pr create. Use the body format below. Fill every table with
+            actual numbers from the run — no placeholders.
+
+            PR TITLE:  perf: browsergnome autopilot (browser) — <summary of gains>
+
+            PR BODY (markdown):
+            ---
+            ## TL;DR
+            <Net measured gains across all kept iterations — headline numbers.>
+
+            ## Fixed (measured)
+            | File | Preset | Detector / Guide | Fix | Before -> After | vs noise band | Decision |
+            |---|---|---|---|---|---|---|
+            <!-- one row per KEEP iteration, numbers from stats.mjs JSON -->
+
+            ## Why these
+            Debt ranking from Perf Map — each fixed finding's debt score and why it topped the list.
+            <!-- fill from graph.json debt values and `why` field -->
+
+            ## Detected, deferred
+            | Overall rank | File | Preset | Detector | Debt |
+            |---|---|---|---|---|
+            <!-- non-selected top findings -->
+
+            ## Method
+            N-run protocol per references/measurement.md, gate floors characterized on THIS runner
+            (see .bgn/config.json, step 0) — not inherited from a laptop.
+            Gate: `improvement > max(minEffect, k·pooledStdDev)`.
+            Reverted attempts: <!-- list any REVERT iterations -->
+
+            ## Review checklist
+            - [ ] Runner-characterized noise band still looks sane (re-run step 0 if this runner
+                  class or its load profile changed recently)
+            - [ ] Run the full test suite; check no missing exports or broken imports
+            - [ ] Merge when satisfied — autopilot never auto-merges
+            ---
+
+            ## Scope constraints (hard limits — never violate these)
+            - Stage only the files you modified: `git add <file1> <file2> ...`. Never `git add -A`.
+            - One change per iteration. Never stack multiple fixes in a single commit.
+            - Do not touch .github/, browsergnome plugin files, or CI configuration.
+            - Close every measurement page before opening the next one — never accumulate open tabs
+              across a run (references/measurement.md's "Browser instance hygiene" section).
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TOP_FINDINGS: ${{ github.event.inputs.top_findings || '3' }}
+          MAX_ITERS: ${{ github.event.inputs.max_iters || '4' }}
+          PRESET: ${{ github.event.inputs.preset || 'auto' }}
+          CUSTOM_PROMPT: ${{ github.event.inputs.custom_prompt || vars.BROWSERGNOME_GOAL || '' }}
+          CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}

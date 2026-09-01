@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 400" width="960" height="400" role="img"
+     aria-label="browsergnome: warmup discard — three real LCP captures, discarding the cold-cache run tightens stddev from 59.9ms to 2.9ms">
+<title>browsergnome: warmup discard, on real data</title>
+<!-- ponytail: labels are live &lt;text&gt; (system font stack), matching gate.svg — see that file's
+     header comment for why these two diagrams aren't path-outlined like loop.svg. -->
+<rect x="0" y="0" width="960" height="400" rx="14" fill="#0b0e14"/>
+<text x="40" y="46" font-family="JetBrains Mono, ui-monospace, monospace" font-size="12"
+      letter-spacing="2" fill="#5b6472">WHY WARMUP DISCARD EXISTS</text>
+<text x="40" y="74" font-family="Instrument Sans, -apple-system, sans-serif" font-size="22"
+      font-weight="700" fill="#e6eaf2">One cold run swallows the noise band</text>
+<text x="40" y="98" font-family="Instrument Sans, -apple-system, sans-serif" font-size="14"
+      fill="#9aa4b8">nextjs.org, unchanged · n=3 · first load included · unthrottled (this illustration predates the</text>
+<text x="40" y="118" font-family="Instrument Sans, -apple-system, sans-serif" font-size="14"
+      fill="#9aa4b8">N=10 throttled calibration run) — the reason <tspan fill="#e6eaf2" font-family="JetBrains Mono, ui-monospace, monospace">warmupDiscard: 1</tspan> defaults on</text>
+
+<!-- bars: baseline y=320, ms 0..300 mapped to y 320..150 -->
+<line x1="90" y1="320" x2="870" y2="320" stroke="rgba(255,255,255,0.12)" stroke-width="1.5"/>
+
+<!-- run 1: cold, discarded -->
+<rect x="220" y="156.06" width="90" height="163.94" fill="#5b6472" opacity="0.45"/>
+<text x="265" y="145" text-anchor="middle" font-family="JetBrains Mono, ui-monospace, monospace" font-size="13" fill="#9aa4b8">289.3ms</text>
+<text x="265" y="345" text-anchor="middle" font-family="JetBrains Mono, ui-monospace, monospace" font-size="12" fill="#5b6472">run 1</text>
+<text x="265" y="362" text-anchor="middle" font-family="Instrument Sans, -apple-system, sans-serif" font-size="12" fill="#5b6472">cold cache · discarded</text>
+
+<!-- run 2, 3: kept -->
+<rect x="440" y="216.02" width="90" height="103.98" fill="#E45FD8"/>
+<text x="485" y="205" text-anchor="middle" font-family="JetBrains Mono, ui-monospace, monospace" font-size="13" fill="#e6eaf2">183.5ms</text>
+<text x="485" y="345" text-anchor="middle" font-family="JetBrains Mono, ui-monospace, monospace" font-size="12" fill="#9aa4b8">run 2</text>
+
+<rect x="600" y="213.69" width="90" height="106.31" fill="#E45FD8"/>
+<text x="645" y="202" text-anchor="middle" font-family="JetBrains Mono, ui-monospace, monospace" font-size="13" fill="#e6eaf2">187.6ms</text>
+<text x="645" y="345" text-anchor="middle" font-family="JetBrains Mono, ui-monospace, monospace" font-size="12" fill="#9aa4b8">run 3</text>
+
+<!-- summary panel -->
+<g font-family="JetBrains Mono, ui-monospace, monospace" font-size="13">
+<text x="770" y="200" fill="#5b6472">all 3</text>
+<text x="770" y="222" fill="#e6eaf2">mean 220.2ms</text>
+<text x="770" y="242" fill="#e6eaf2">stddev 59.9ms</text>
+<line x1="760" y1="256" x2="895" y2="256" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+<text x="770" y="278" fill="#E45FD8">2,3 only</text>
+<text x="770" y="300" fill="#e6eaf2">mean 185.6ms</text>
+<text x="770" y="320" fill="#e6eaf2">stddev 2.9ms</text>
+</g>
+
+<text x="40" y="390" font-family="Instrument Sans, -apple-system, sans-serif" font-size="12.5"
+      fill="#5b6472">Discarding one cold-cache sample: a ~20× tighter noise band, from 3 real captures — not a synthetic example.</text>
+</svg>
