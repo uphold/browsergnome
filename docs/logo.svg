@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="40" height="40" role="img" aria-label="browsergnome mark">
+  <title>browsergnome</title>
+  <rect x="0" y="0" width="40" height="40" rx="8" fill="#0b0e14"/>
+  <path d="M8,14 L20,10 L32,14 L32,27.5 Q32,29 30.5,29 L9.5,29 Q8,29 8,27.5 Z"
+        fill="none" stroke="#e6eaf2" stroke-width="2.4" stroke-linejoin="round"/>
+  <rect x="11" y="17" width="9" height="7" fill="#E45FD8"/>
+  <line x1="20" y1="31" x2="20" y2="34" stroke="#E45FD8" stroke-width="2.4" stroke-linecap="round"/>
+</svg>

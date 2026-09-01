@@ -1,0 +1,68 @@
+{
+  "preset": "first-load",
+  "target": "https://example.com/",
+  "status": "done",
+  "startedAt": "2026-08-05T09:00:00.000Z",
+  "unit": "ms",
+  "direction": "lower",
+  "baseline": { "mean": 1450, "std": 18, "runs": 5 },
+  "iterations": [
+    {
+      "n": 1,
+      "hypothesis": "Preload the LCP hero image",
+      "guide": "lcp",
+      "change": "Added <link rel=preload as=image> for the hero banner image referenced by the LCP element",
+      "candidate": { "mean": 1290, "std": 16, "runs": 5 },
+      "decision": "KEEP",
+      "delta": "-160ms (-11%)",
+      "noiseBand": 32,
+      "commit": "b4c1a02"
+    },
+    {
+      "n": 2,
+      "hypothesis": "Defer the third-party analytics tag",
+      "guide": "third-party",
+      "change": "Added defer to the analytics <script> tag and moved it below the fold markup",
+      "candidate": { "mean": 1275, "std": 17, "runs": 5 },
+      "decision": "REVERT",
+      "delta": "-15ms (-1.2%)",
+      "noiseBand": 34,
+      "commit": null
+    },
+    {
+      "n": 3,
+      "hypothesis": "Inline critical CSS, defer the rest",
+      "guide": "css",
+      "change": "Extracted above-the-fold CSS inline in <head>, deferred the full stylesheet via a media=print swap",
+      "candidate": { "mean": 1198, "std": 14, "runs": 5 },
+      "decision": "KEEP",
+      "delta": "-92ms (-7%)",
+      "noiseBand": 28,
+      "commit": "f2e9d71"
+    },
+    {
+      "n": 4,
+      "hypothesis": "Self-host the primary webfont",
+      "guide": "fonts",
+      "change": "Self-hosted the primary webfont and added font-display: swap to its @font-face rule",
+      "candidate": { "mean": 1193, "std": 15, "runs": 5 },
+      "decision": "REVERT",
+      "delta": "-5ms (-0.4%)",
+      "noiseBand": 30,
+      "commit": null
+    },
+    {
+      "n": 5,
+      "hypothesis": "Remove the render-blocking Google Fonts stylesheet link",
+      "guide": "fonts",
+      "change": "Removed the synchronous Google Fonts <link>, applied a fallback font stack first and swapped via font-display",
+      "candidate": { "mean": 1122, "std": 13, "runs": 5 },
+      "decision": "KEEP",
+      "delta": "-76ms (-6%)",
+      "noiseBand": 26,
+      "commit": "a83c410"
+    }
+  ],
+  "netDelta": "-328ms (-23%)",
+  "commits": ["b4c1a02", "f2e9d71", "a83c410"]
+}

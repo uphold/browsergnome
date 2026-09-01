@@ -1,0 +1,24 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -d \"${CLAUDE_PLUGIN_ROOT}/node_modules/@babel\" ] || npm --prefix \"${CLAUDE_PLUGIN_ROOT}\" install --omit=dev --quiet 2>/dev/null || true"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "input=$(cat); [ -d .bgn ] && printf '%s' \"$input\" | grep -qiE 'performance|\\bLCP\\b|\\bCLS\\b|\\bINP\\b|layout shift|core web vitals|bundle size|hydration|\\bslow\\b|optimi[sz]e|profil(e|ing)|render.?blocking' && printf '[browsergnome] This repo is browsergnome-tracked. Before any perf work, consult .bgn/perf-memory.md (known hotspots, proven fixes, reverted dead-ends) and record any newly-found gap or measured result there. Run /browsergnome for the Perf Map 3D (or the autonomous loop, once available).' || true"
+          }
+        ]
+      }
+    ]
+  }
+}
