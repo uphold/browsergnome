@@ -1,0 +1,11 @@
+node_modules/
+.DS_Store
+*.log
+
+# Runtime artifacts produced against a target web app (these live in the
+# target repo's own .bgn/, never in the plugin). Ignored here so a test run
+# inside this repo doesn't pollute it.
+.bgn/
+graph.json
+perf-map.html
+lcp-map.html

@@ -1,0 +1,133 @@
+# GitHub Pages live demo.
+#
+# Builds the public demo at https://xavi-999.github.io/browsergnome/ :
+#   - perf-map.html — a REAL static scan of excalidraw at a pinned SHA (the same commit
+#     recorded in references/perf-map.md's calibration note — 527 modules, 16 hotspots).
+#   - lcp-map.html  — a REAL LCP attribution from the shipped trace fixture
+#     (skills/browsergnome/assets/trace.render-blocking-sample.json.gz, a real nextjs.org capture).
+#   - report.html   — the live run report rendered from the bundled sample run-state
+#     (skills/browsergnome/assets/run-state.sample.json).
+#   - index.html    — landing page (docs/pages/index.html) with real substituted stats.
+#
+# No generated HTML is committed to master — everything is built here and deployed as a
+# Pages artifact.
+#
+# Runs on every push to master, plus manual dispatch. On a free-tier private repo the deploy
+# step will fail (GitHub Pages requires a public repo, or a paid plan) — that's expected until
+# the repo goes public and Pages is enabled once in Settings > Pages. No other change needed
+# here after that; this workflow is otherwise ready to go.
+
+name: Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  # excalidraw main, resolved 2026-08-08 — the calibration commit in references/perf-map.md.
+  # Bump deliberately; re-verify hotspot count against the calibration note if you do.
+  EXCALIDRAW_SHA: 4872083c044491b6d5c96ae134a75464f96d6831
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fetch excalidraw at pinned SHA
+        run: |
+          git init excalidraw
+          git -C excalidraw remote add origin https://github.com/excalidraw/excalidraw
+          git -C excalidraw fetch --depth 1 origin "$EXCALIDRAW_SHA"
+          git -C excalidraw checkout FETCH_HEAD
+
+      # Alias resolution is make-or-break for fan-in/centrality (13 @excalidraw/* aliases).
+      # If the scan prints "aliases (none found)" the graph is meaningless — fail loudly.
+      - name: Scan excalidraw (perf_scan)
+        run: |
+          set -o pipefail
+          node skills/browsergnome/scripts/perf_scan.mjs excalidraw --out /tmp/graph.json | tee /tmp/scan.log
+          if grep -qE 'aliases +\(none found\)' /tmp/scan.log; then
+            echo "::error::perf_scan resolved no import aliases on excalidraw — graph would be meaninglessly sparse"
+            exit 1
+          fi
+
+      - name: Build perf map
+        run: |
+          mkdir -p _site
+          node skills/browsergnome/scripts/build_perf_map.mjs /tmp/graph.json --out _site/perf-map.html
+
+      - name: Build LCP attribution map (shipped fixture)
+        run: |
+          node skills/browsergnome/scripts/lcp_attribution.mjs skills/browsergnome/assets/trace.render-blocking-sample.json.gz > /tmp/attribution.json
+          node skills/browsergnome/scripts/build_lcp_map.mjs /tmp/attribution.json --out _site/lcp-map.html
+
+      - name: Build run report (sample run-state)
+        run: node skills/browsergnome/scripts/build_run_report.mjs skills/browsergnome/assets/run-state.sample.json --out _site/report.html
+
+      - name: Assemble landing page
+        run: |
+          cp docs/pages/index.html _site/
+          cp docs/logo-badge.svg _site/
+          # Pull the hero numbers from the real scan and the real trace — the page never
+          # claims a figure the build didn't measure.
+          node -e "
+            const g = JSON.parse(require('fs').readFileSync('/tmp/graph.json', 'utf8'));
+            const attr = JSON.parse(require('fs').readFileSync('/tmp/attribution.json', 'utf8'));
+            const fmt = (n) => n.toLocaleString('en-US');
+            const out = {
+              MODULES: fmt(g.nodes.length),
+              HOTSPOTS: fmt(g.nodes.filter((n) => n.isHotspot).length),
+              FINDINGS: fmt(g.nodes.reduce((s, n) => s + (n.findings?.length || 0), 0)),
+              LCP_MS: attr.lcpMs != null ? Math.round(attr.lcpMs) : '?',
+            };
+            require('fs').writeFileSync('/tmp/stats.env', Object.entries(out).map(([k, v]) => k + '=' + v).join('\n'));
+          "
+          . /tmp/stats.env
+          sed -i \
+            -e "s/__EXCALIDRAW_SHA__/${EXCALIDRAW_SHA:0:8}/g" \
+            -e "s/__BUILD_DATE__/$(date -u +%Y-%m-%d)/g" \
+            -e "s/__STAT_MODULES__/${MODULES}/g" \
+            -e "s/__STAT_HOTSPOTS__/${HOTSPOTS}/g" \
+            -e "s/__STAT_FINDINGS__/${FINDINGS}/g" \
+            -e "s/__LCP_MS__/${LCP_MS}/g" \
+            _site/index.html
+          # nothing un-templated left behind
+          if grep -q '__' _site/index.html; then
+            echo "::error::unsubstituted placeholder left in index.html" && exit 1
+          fi
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

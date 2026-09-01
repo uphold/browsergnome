@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>browsergnome — the autonomous JS web performance engineer</title>
+<meta name="description" content="browsergnome — the autonomous JS web performance engineer. Live 3D Perf Map (real scan of excalidraw), LCP Attribution Map (real nextjs.org capture), and a live run report.">
+<link rel="icon" type="image/svg+xml" href="logo-badge.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* ------------------------------------------------------------------ *
+   * browsergnome demo landing — same dark canvas + magenta accent as    *
+   * the three live tools it links to. Editorial layout: no cards,       *
+   * index rows, real measured numbers only.                             *
+   * ------------------------------------------------------------------ */
+  :root {
+    --bg:      #0b0e14;
+    --panel:   rgba(17, 21, 31, 0.88);
+    --tint:    #170f1c;
+    --hair:    rgba(255, 255, 255, 0.08);
+    --hair-2:  rgba(255, 255, 255, 0.14);
+    --text:    #e6eaf2;
+    --dim:     #9aa4b8;
+    --faint:   #5b6472;
+    --accent:  #E45FD8;
+    --accent-ink:#12141A;
+    --ease:    cubic-bezier(0.16, 1, 0.3, 1);
+    --sans:    "Instrument Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --mono:    "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: var(--sans); color: var(--text); background: var(--bg);
+    line-height: 1.6; -webkit-font-smoothing: antialiased;
+    background-image: linear-gradient(180deg, var(--tint) 0%, var(--bg) 420px);
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 0 28px; }
+  a { color: inherit; }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+  .enter { animation: rise 0.7s var(--ease) both; }
+
+  header { border-bottom: 1px solid var(--hair); }
+  .mast { display: flex; align-items: center; justify-content: space-between; padding: 22px 0; }
+  .brand { display: flex; align-items: center; gap: 11px; text-decoration: none; }
+  .brand .word { font-size: 19px; font-weight: 650; letter-spacing: -0.02em; }
+  .brand .word b { color: var(--accent); font-weight: 650; }
+  .mast nav a { font-family: var(--mono); font-size: 12px; color: var(--dim); text-decoration: none;
+    margin-left: 22px; letter-spacing: 0.02em; }
+  .mast nav a:hover { color: var(--text); }
+
+  .hero { padding: 76px 0 56px; }
+  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 16px; }
+  h1 { font-size: 44px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.12; max-width: 720px; }
+  h1 b { color: var(--accent); font-weight: 700; }
+  .sub { font-size: 17px; color: var(--dim); max-width: 620px; margin-top: 18px; line-height: 1.65; }
+
+  .stats { display: flex; gap: 40px; margin-top: 40px; flex-wrap: wrap; }
+  .stat .n { font-family: var(--mono); font-size: 26px; font-weight: 600; color: var(--text); }
+  .stat .n.accent { color: var(--accent); }
+  .stat .l { font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--faint); margin-top: 3px; }
+
+  .demos { padding: 40px 0 80px; border-top: 1px solid var(--hair); }
+  .section-title { font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 22px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 24px;
+    padding: 22px 0; border-top: 1px solid var(--hair); text-decoration: none; color: inherit;
+    transition: background 0.15s; }
+  .row:first-of-type { border-top: 1px solid var(--hair); }
+  .row:hover { background: rgba(255,255,255,0.03); }
+  .row-main .t { font-size: 18px; font-weight: 600; }
+  .row-main .d { font-size: 13.5px; color: var(--dim); margin-top: 5px; max-width: 560px; }
+  .row-go { font-family: var(--mono); font-size: 12px; color: var(--accent); white-space: nowrap;
+    flex: none; }
+
+  footer { border-top: 1px solid var(--hair); padding: 26px 0; }
+  .foot { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+  .foot span, .foot a { font-family: var(--mono); font-size: 11px; color: var(--faint); text-decoration: none; }
+  .foot a:hover { color: var(--dim); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap mast">
+    <a class="brand" href="#">
+      <svg width="22" height="22" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <path d="M4,10 L16,6 L28,10 L28,23.5 Q28,25 26.5,25 L5.5,25 Q4,25 4,23.5 Z"
+              fill="none" stroke="#e6eaf2" stroke-width="2.4" stroke-linejoin="round"/>
+        <rect x="7" y="13" width="9" height="7" fill="#E45FD8"/>
+        <line x1="16" y1="27" x2="16" y2="30" stroke="#E45FD8" stroke-width="2.4" stroke-linecap="round"/>
+      </svg>
+      <span class="word">browser<b>g</b>nome</span>
+    </a>
+    <nav>
+      <a href="https://github.com/xavi-999/browsergnome">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap hero enter">
+  <div class="eyebrow">claude code plugin · web performance</div>
+  <h1>The autonomous <b>JS web performance</b> engineer.</h1>
+  <p class="sub">One command turns scattered web performance tooling into a single scientific loop —
+    propose → measure → keep/revert — over chrome-devtools-mcp, with a static Perf Map, an LCP
+    Attribution Map, a per-repo performance memory, and Dep Pulse, which reads real release notes to
+    surface perf-relevant dependency bumps — ambient alongside Autoresearch runs, or standalone on a
+    direct dependency ask. The two maps below are real,
+    unedited build output against real captures; the run report renders a bundled sample run, not a
+    live one.</p>
+
+  <div class="stats">
+    <div class="stat"><div class="n accent">__STAT_MODULES__</div><div class="l">modules scanned</div></div>
+    <div class="stat"><div class="n">__STAT_HOTSPOTS__</div><div class="l">hotspots surfaced</div></div>
+    <div class="stat"><div class="n">__STAT_FINDINGS__</div><div class="l">findings</div></div>
+    <div class="stat"><div class="n">__LCP_MS__ms</div><div class="l">real LCP capture</div></div>
+  </div>
+</div>
+
+<div class="wrap demos enter" style="animation-delay:.1s">
+  <div class="section-title">the live tools</div>
+
+  <a class="row" href="perf-map.html">
+    <div class="row-main">
+      <div class="t">Perf Map 3D</div>
+      <div class="d">A static AST scan of excalidraw (__EXCALIDRAW_SHA__), rendered as an interactive
+        3D graph. Node size = perf debt, color = severity.</div>
+    </div>
+    <div class="row-go">open →</div>
+  </a>
+
+  <a class="row" href="lcp-map.html">
+    <div class="row-main">
+      <div class="t">LCP Attribution Map</div>
+      <div class="d">A real captured trace against nextjs.org, broken into network and chunk nodes.
+        Solid = measured; translucent = apportioned estimate.</div>
+    </div>
+    <div class="row-go">open →</div>
+  </a>
+
+  <a class="row" href="report.html">
+    <div class="row-main">
+      <div class="t">Run report</div>
+      <div class="d">The per-iteration report format a real Autoresearch run writes — baseline, gate
+        decision, and net improvement — rendered here from a bundled sample run, not a live one.</div>
+    </div>
+    <div class="row-go">open →</div>
+  </a>
+</div>
+
+<footer>
+  <div class="wrap foot">
+    <span>built __BUILD_DATE__ · excalidraw @ __EXCALIDRAW_SHA__</span>
+    <a href="https://github.com/xavi-999/browsergnome/blob/master/LICENSE">MIT License</a>
+  </div>
+</footer>
+
+</body>
+</html>
