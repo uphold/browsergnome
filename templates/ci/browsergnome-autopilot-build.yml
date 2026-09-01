@@ -1,0 +1,207 @@
+name: browsergnome perf autopilot (weekly)
+# Build-only template — no browser, no Chrome. Measures with bundle-size (build-time JS bytes).
+# Detects browser-only findings (first-load/interaction) but defers them in the PR body rather
+# than applying an unmeasured fix.
+#
+# Setup (one-time):
+#   1. Copy this file to .github/workflows/ in your web repo.
+#   2. Add ANTHROPIC_API_KEY as a repo secret.
+#   3. Enable "Allow GitHub Actions to create and approve pull requests" in repo Settings ->
+#      Actions -> General -> Workflow permissions. (Required for gh pr create to succeed.)
+#   4. Replace the plugin_marketplaces URL with the browsergnome release you trust.
+#      Pinning to a tag is recommended: https://github.com/xavi-999/browsergnome.git@v0.2.0
+#   5. Tune cron, top_findings, max_iters, and optionally set vars.BROWSERGNOME_GOAL for a
+#      fixed custom goal on every scheduled run (blank = weekly top-X default).
+#
+# See templates/ci/README.md for the full adoption guide.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"        # Mondays 06:00 UTC — tune to taste
+  workflow_dispatch:
+    inputs:
+      top_findings:
+        description: "How many top bundle-size findings to attempt"
+        default: "3"
+      max_iters:
+        description: "Max autoresearch iterations (budget cap)"
+        default: "4"
+      custom_prompt:
+        description: |
+          Optional: a specific goal instead of top-X (e.g. "reduce onboarding bundle size").
+          Leave blank for the default top-X bundle-size run.
+          For scheduled cron runs, set this as a repo variable: vars.BROWSERGNOME_GOAL.
+        default: ""
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  autopilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - uses: anthropics/claude-code-action@4d7e1f0cd85743fdc93b1c8040ab54395da024e2 # v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Replace with the browsergnome fork/release you trust.
+          # Pin to a tag in production: https://github.com/xavi-999/browsergnome.git@v0.2.0
+          plugin_marketplaces: https://github.com/xavi-999/browsergnome.git
+          plugins: browsergnome@browsergnome
+          # --allowedTools locks down what the agent may invoke.
+          # Tighten per your security policy; shell variable assignments (RESULT=$(...))
+          # may need broader Bash(*) access — test with workflow_dispatch first.
+          claude_args: >-
+            --model claude-sonnet-4-6
+            --max-turns 80
+            --allowedTools Read,Edit,Write,Bash(node *),Bash(npx *),Bash(npm ci),Bash(npm run *),Bash(git *),Bash(gh pr create *),Bash(gh pr list *),Bash(find *),Bash(wc *),Bash(cat *),Bash(bc *)
+          prompt: |
+            # browsergnome CI autopilot — build-only (bundle-size)
+
+            Run NON-INTERACTIVELY. Never present a menu or call AskUserQuestion.
+            Scripts are at ${CLAUDE_PLUGIN_ROOT}/skills/browsergnome/scripts/
+            Read .bgn/config.json if present: `budget` overrides $MAX_ITERS; `k` and `minEffect`
+            override defaults — this repo's own characterized noise-band numbers always win over
+            this template's fallback defaults below (see references/measurement.md's per-preset
+            "Observed noise" sections for why a laptop's numbers shouldn't be trusted on a runner).
+
+            ## 1. Create branch
+            Create and switch to branch `browsergnome/autopilot-$(date +%Y-%m-%d)`.
+            Record BASELINE_SHA=$(git rev-parse HEAD).
+
+            ## 2. Bootstrap .bgn/
+            node "${CLAUDE_PLUGIN_ROOT}/skills/browsergnome/scripts/doctor.mjs" --init
+            Errors here are non-fatal — continue even if toolchain checks warn. Doctor's detected
+            `bundler` axis (webpack/turbopack/rspack/vite/esbuild/unknown) determines step 5 below.
+
+            ## 3. Map debt
+            node "${CLAUDE_PLUGIN_ROOT}/skills/browsergnome/scripts/perf_scan.mjs" . --out /tmp/bg-graph.json
+            Read /tmp/bg-graph.json. The `top3` array and full `nodes` array (sorted by debt desc)
+            list hotspots: { file, debt, preset, why, paste }.
+
+            ## 4. Select targets
+            If env $CUSTOM_PROMPT is non-empty -> use it as the autoresearch goal; skip to step 5.
+              CONSTRAINT: this template can only MEASURE bundle-size. If the goal needs a browser
+              (first-load / interaction), note this in the PR and do NOT apply an unmeasured fix.
+            Otherwise (default top-X mode):
+            - Filter all hotspot nodes to preset == "bundle-size". Take top min($TOP_FINDINGS, budget)
+              by debt score — this is the BUNDLE-SIZE SUBSET ranking, not the overall top-X.
+            - Collect the remaining overall top hotspots (non-bundle-size) as DEFERRED for the PR body.
+            - If zero bundle-size findings: print "no bundle-size findings — exiting without PR" and exit 0.
+
+            ## 5. Measure baseline bundle bytes (before any fix)
+            Read .bgn/config.json's `bundler` field (or re-run Doctor if absent). Read the matching
+            `${CLAUDE_PLUGIN_ROOT}/skills/browsergnome/references/bundlers/<bundler>.md` for exactly
+            how to get a stats file for THIS bundler — the "bundle-size on this framework/bundler"
+            section names the real command (`webpack --json > stats.json`, `esbuild --metafile=...`,
+            or — for webpack under a framework that owns its own build, like Next.js — the
+            `@next/bundle-analyzer` / custom stats-dump path documented in `frameworks/<framework>.md`).
+            If `bundler` is `vite`/`turbopack`/`rspack`/`unknown` and the matching catalog file says
+            `bundle-size` isn't usable without an added dependency: print "bundle-size not usable on
+            this bundler without additional setup — see references/bundlers/<bundler>.md" and exit 0,
+            do not guess a stats format.
+            node "${CLAUDE_PLUGIN_ROOT}/skills/browsergnome/scripts/bundle_stats.mjs" <stats-file>
+            Store `totalBytes` as ORIGINAL_BYTES and BEFORE_BYTES (they start equal). Bundle builds
+            are deterministic given identical source (see references/measurement.md's "Observed
+            noise — bundle-size" section) — one build per side is sound, no N-run protocol needed.
+
+            ## 6. Autoresearch loop — one fix at a time, capped at min($MAX_ITERS, budget) total
+            For each selected finding:
+
+              a) PROPOSE one atomic fix: replace barrel imports with direct leaf imports,
+                 code-split a rarely-used route, or swap a heavy dep for a lighter one — see
+                 references/knowledge/bundle.md for the candidate-fix catalog.
+                 Change the minimal set of files needed for that one fix.
+
+              b) MEASURE candidate bundle bytes (same detect/build as step 5, fresh output).
+                 Store as AFTER_BYTES.
+
+              c) GATE — run stats.mjs and parse the JSON `decision` field:
+                   node "${CLAUDE_PLUGIN_ROOT}/skills/browsergnome/scripts/stats.mjs" \
+                     --baseline "$BEFORE_BYTES" --candidate "$AFTER_BYTES" \
+                     --min-effect ${MIN_EFFECT_BYTES:-1024} --k 2 --direction lower --unit bytes
+                 stats.mjs always exits 0; read its JSON stdout and check `decision`.
+                 min-effect defaults to 1024 bytes (references/presets.md's bundle-size floor) —
+                 override via .bgn/config.json if this repo has its own characterized value.
+
+              d) If decision == "KEEP":
+                   git add <only the files you modified — never git add -A>
+                   git commit -m "perf(<target>): <one-line description> [browsergnome]"
+                   Update BEFORE_BYTES = AFTER_BYTES for subsequent iterations.
+                   Increment KEPT_COUNT.
+
+              e) If decision == "REVERT":
+                   git restore .
+                   Log the REVERT with the stats output for the PR "Reverted" list.
+
+            ## 7. Squash kept commits into one, then open PR
+            If KEPT_COUNT == 0: print "no improvements cleared the gate — no PR" and exit 0.
+
+            Otherwise:
+              git reset --soft "$BASELINE_SHA"
+              Compute NET_DELTA = ORIGINAL_BYTES - BEFORE_BYTES (final bundle size)
+              Compute NET_PCT  = NET_DELTA * 100 / ORIGINAL_BYTES (one decimal place)
+              git commit -m "perf: browsergnome weekly autopilot — bundle -${NET_PCT}% (${KEPT_COUNT} fix(es))"
+              git push -u origin HEAD
+
+            Open the PR with gh pr create. Use the body format below. Fill every table with
+            actual numbers from the run — no placeholders.
+
+            PR TITLE:  perf: browsergnome autopilot — bundle -${NET_PCT}% (${KEPT_COUNT} fix(es))
+
+            PR BODY (markdown):
+            ---
+            ## TL;DR
+            Bundle reduced by **<NET_DELTA bytes> (-<NET_PCT>%)** in <KEPT_COUNT> iteration(s).
+
+            ## Fixed (measured)
+            | File | Detector / Guide | Fix | Before -> After (bytes) | vs min-effect | Decision |
+            |---|---|---|---|---|---|
+            <!-- one row per KEEP iteration, numbers from stats.mjs JSON -->
+
+            ## Why these
+            Debt ranking from Perf Map — each fixed finding's debt score and why it led the
+            bundle-size subset list. <!-- fill from graph.json debt values and `why` field -->
+
+            ## Detected, deferred (browser-only findings)
+            These appeared in the Perf Map but cannot be measured without a browser. Use
+            `browsergnome-autopilot-browser.yml` to address them.
+            | Overall rank | File | Preset | Detector | Debt |
+            |---|---|---|---|---|
+            <!-- one row per deferred non-bundle-size top finding -->
+
+            ## Method
+            Single-build measurement (bundle size is deterministic given identical source — see
+            references/measurement.md's "Observed noise — bundle-size" section for why an N-run
+            protocol is deliberately skipped here). Gate: `improvement > min-effect` (no
+            k·pooledStdDev term — it's always 0 for a deterministic build).
+            Reverted attempts: <!-- list any REVERT iterations with their stats output -->
+
+            ## Review checklist
+            - [ ] Verify the bundle claim with `npm run map` (Perf Map 3D) or a bundle analyzer
+            - [ ] Confirm no missing exports after any barrel-file refactoring (run app + tests)
+            - [ ] Merge when satisfied — autopilot never auto-merges
+            ---
+
+            ## Scope constraints (hard limits — never violate these)
+            - Stage only the files you modified: `git add <file1> <file2> ...`. Never `git add -A`.
+            - One change per iteration. Never stack multiple fixes in a single commit.
+            - Do not touch .github/, browsergnome plugin files, or CI configuration.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TOP_FINDINGS: ${{ github.event.inputs.top_findings || '3' }}
+          MAX_ITERS: ${{ github.event.inputs.max_iters || '4' }}
+          # For scheduled cron runs, set a fixed goal via a repo variable:
+          #   vars.BROWSERGNOME_GOAL = "reduce bundle size in the checkout flow"
+          # Manual dispatch inputs take precedence when both are set.
+          CUSTOM_PROMPT: ${{ github.event.inputs.custom_prompt || vars.BROWSERGNOME_GOAL || '' }}
