@@ -54,9 +54,14 @@ function main() {
 
   // Literal split/join (not regex) so the 1.3MB minified lib can't be
   // misinterpreted as a replacement pattern.
+  //
+  // The graph payload is embedded inside a <script> block, and JSON.stringify does not escape
+  // "/". Node ids and labels are derived from the scanned target repository's file paths, so a
+  // file named `x</script><img src=x onerror=...>` would close the script element and execute in
+  // the output page. build_run_report.mjs already escapes this; do the same here.
   const html = template
     .split(LIB_MARKER).join(lib)
-    .split(DATA_MARKER).join(graphRaw.trim());
+    .split(DATA_MARKER).join(graphRaw.trim().replace(/<\/(script)/gi, '<\\/$1'));
 
   fs.writeFileSync(outFile, html);
   const outAbs = path.resolve(outFile);
