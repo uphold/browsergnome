@@ -8,7 +8,7 @@ also goes unanswered, escalate to the `uphold` org owners.
 ## Setup
 
 ```bash
-git clone https://github.com/xavi-999/browsergnome
+git clone https://github.com/uphold/browsergnome
 cd browsergnome
 npm install   # @babel/parser + @babel/traverse, used only by perf_scan.mjs
 ```

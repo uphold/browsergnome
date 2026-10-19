@@ -1,12 +1,18 @@
 {
   "name": "browsergnome",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "type": "module",
   "description": "The autonomous JS web performance engineer. Propose → measure → keep/revert loop, LCP Attribution Map, and per-repo performance memory.",
   "author": {
     "name": "Xavier",
     "email": "xavi-999@users.noreply.github.com"
   },
+  "homepage": "https://github.com/uphold/browsergnome",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/uphold/browsergnome.git"
+  },
+  "bugs": "https://github.com/uphold/browsergnome/issues",
   "license": "MIT",
   "engines": {
     "node": ">=18"

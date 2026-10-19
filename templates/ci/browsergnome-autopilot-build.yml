@@ -9,7 +9,7 @@ name: browsergnome perf autopilot (weekly)
 #   3. Enable "Allow GitHub Actions to create and approve pull requests" in repo Settings ->
 #      Actions -> General -> Workflow permissions. (Required for gh pr create to succeed.)
 #   4. Replace the plugin_marketplaces URL with the browsergnome release you trust.
-#      Pinning to a tag is recommended: https://github.com/xavi-999/browsergnome.git@v0.2.0
+#      Pinning to a tag is recommended: https://github.com/uphold/browsergnome.git@v0.2.0
 #   5. Tune cron, top_findings, max_iters, and optionally set vars.BROWSERGNOME_GOAL for a
 #      fixed custom goal on every scheduled run (blank = weekly top-X default).
 #
@@ -55,8 +55,8 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           # Replace with the browsergnome fork/release you trust.
-          # Pin to a tag in production: https://github.com/xavi-999/browsergnome.git@v0.2.0
-          plugin_marketplaces: https://github.com/xavi-999/browsergnome.git
+          # Pin to a tag in production: https://github.com/uphold/browsergnome.git@v0.2.0
+          plugin_marketplaces: https://github.com/uphold/browsergnome.git
           plugins: browsergnome@browsergnome
           # --allowedTools locks down what the agent may invoke.
           # Tighten per your security policy; shell variable assignments (RESULT=$(...))
