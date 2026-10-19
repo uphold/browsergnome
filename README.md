@@ -3,19 +3,19 @@
   <img src="docs/banner-light.png" alt="browsergnome — the autonomous JS web performance engineer">
 </picture>
 
-[![CI](https://github.com/xavi-999/browsergnome/actions/workflows/ci.yml/badge.svg)](https://github.com/xavi-999/browsergnome/actions/workflows/ci.yml)
+[![CI](https://github.com/uphold/browsergnome/actions/workflows/ci.yml/badge.svg)](https://github.com/uphold/browsergnome/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-5b6472)](LICENSE)
-[![Stars](https://img.shields.io/github/stars/xavi-999/browsergnome?color=E45FD8)](https://github.com/xavi-999/browsergnome/stargazers)
-[![Forks](https://img.shields.io/github/forks/xavi-999/browsergnome?color=5b6472)](https://github.com/xavi-999/browsergnome/network/members)
-[![Issues](https://img.shields.io/github/issues/xavi-999/browsergnome?color=5b6472)](https://github.com/xavi-999/browsergnome/issues)
-[![Live demo](https://img.shields.io/badge/demo-live-E45FD8)](https://xavi-999.github.io/browsergnome/)
+[![Stars](https://img.shields.io/github/stars/uphold/browsergnome?color=E45FD8)](https://github.com/uphold/browsergnome/stargazers)
+[![Forks](https://img.shields.io/github/forks/uphold/browsergnome?color=5b6472)](https://github.com/uphold/browsergnome/network/members)
+[![Issues](https://img.shields.io/github/issues/uphold/browsergnome?color=5b6472)](https://github.com/uphold/browsergnome/issues)
+[![Live demo](https://img.shields.io/badge/demo-live-E45FD8)](https://uphold.github.io/browsergnome/)
 [![Node >=18](https://img.shields.io/badge/node-%3E%3D18-5b6472)](package.json)
 <!-- npm version / downloads: uncomment once published — not on npm yet, see Install.
 [![npm version](https://img.shields.io/npm/v/browsergnome?color=E45FD8)](https://www.npmjs.com/package/browsergnome)
 [![npm downloads](https://img.shields.io/npm/dm/browsergnome?color=5b6472)](https://www.npmjs.com/package/browsergnome)
 -->
 <!-- Release: uncomment once a v0.1.0 tag + GitHub release exist.
-[![Release](https://img.shields.io/github/v/release/xavi-999/browsergnome?color=E45FD8)](https://github.com/xavi-999/browsergnome/releases)
+[![Release](https://img.shields.io/github/v/release/uphold/browsergnome?color=E45FD8)](https://github.com/uphold/browsergnome/releases)
 -->
 
 > **The autonomous JS web performance engineer.** `/browsergnome`: one command turns scattered
@@ -58,13 +58,13 @@ chunk nodes. Solid = measured directly from the trace; translucent = apportioned
 </tr>
 </table>
 
-▶ [**Explore both live**](https://xavi-999.github.io/browsergnome/) — same real scan, same real
+▶ [**Explore both live**](https://uphold.github.io/browsergnome/) — same real scan, same real
 capture, plus the live run report.
 
 ## Install
 
 ```
-/plugin marketplace add xavi-999/browsergnome      # or a local path to this repo
+/plugin marketplace add uphold/browsergnome      # or a local path to this repo
 /plugin install browsergnome
 ```
 
@@ -78,7 +78,7 @@ Then, from inside a Claude Code session with the plugin loaded, run `/browsergno
 <summary>Or clone it directly (not published to npm yet, so no <code>npx browsergnome@latest</code> fallback)</summary>
 
 ```bash
-git clone https://github.com/xavi-999/browsergnome.git
+git clone https://github.com/uphold/browsergnome.git
 cd browsergnome
 npm install
 ```
@@ -89,8 +89,8 @@ npm install
 
 ### Map your app (no browser needed)
 
-→ See a real example first: [Perf Map 3D](https://xavi-999.github.io/browsergnome/perf-map.html) ·
-[LCP Attribution Map](https://xavi-999.github.io/browsergnome/lcp-map.html)
+→ See a real example first: [Perf Map 3D](https://uphold.github.io/browsergnome/perf-map.html) ·
+[LCP Attribution Map](https://uphold.github.io/browsergnome/lcp-map.html)
 
 ```
 /browsergnome scan <path-to-a-web-repo>

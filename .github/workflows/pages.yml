@@ -1,6 +1,6 @@
 # GitHub Pages live demo.
 #
-# Builds the public demo at https://xavi-999.github.io/browsergnome/ :
+# Builds the public demo at https://uphold.github.io/browsergnome/ :
 #   - perf-map.html — a REAL static scan of excalidraw at a pinned SHA (the same commit
 #     recorded in references/perf-map.md's calibration note — 527 modules, 16 hotspots).
 #   - lcp-map.html  — a REAL LCP attribution from the shipped trace fixture

@@ -38,8 +38,8 @@ cp browsergnome-autopilot-build.yml .github/workflows/
 #    check "Allow GitHub Actions to create and approve pull requests"
 
 # 4. Edit the workflow — replace plugin_marketplaces URL
-#    Default: https://github.com/xavi-999/browsergnome.git
-#    Recommended: pin to a tag, e.g. https://github.com/xavi-999/browsergnome.git@v0.2.0
+#    Default: https://github.com/uphold/browsergnome.git
+#    Recommended: pin to a tag, e.g. https://github.com/uphold/browsergnome.git@v0.2.0
 
 # 5. Trigger manually to verify before the first scheduled run
 #    GitHub repo -> Actions -> "browsergnome perf autopilot (weekly)" -> Run workflow

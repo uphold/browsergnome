@@ -92,7 +92,7 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           # Replace with the browsergnome fork/release you trust.
-          plugin_marketplaces: https://github.com/xavi-999/browsergnome.git
+          plugin_marketplaces: https://github.com/uphold/browsergnome.git
           plugins: browsergnome@browsergnome
           # chrome-devtools-mcp is bundled via the plugin's .mcp.json. CHROME_PATH (set in env:
           # below) is passed through in case chrome-devtools-mcp's underlying Puppeteer launcher
