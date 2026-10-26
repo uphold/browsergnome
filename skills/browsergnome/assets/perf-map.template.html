@@ -307,7 +307,8 @@
     document.getElementById('pTitle').textContent = n.id;
     document.getElementById('pMeta').textContent =
       `debt ${n.debt} · fan-in ${n.fanIn} · ${n.findings.length} finding(s)` +
-      (n.hasList ? ' · renders a list' : '') + (n.isHotspot ? '' : ' · below hotspot gate');
+      (n.hasList ? ' · renders a list' : '') + (n.isHotspot ? '' : ' · below hotspot gate') +
+      (n.renders != null ? ` · ${n.renders} render(s), ${n.renderSelfMs.toFixed(1)}ms self (dev profile)` : '');
     const order = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
     const fs = [...n.findings].sort((a, b) => order[a.severity] - order[b.severity]);
     document.getElementById('pFindings').innerHTML = fs.length ? fs.map((f) => `
@@ -362,7 +363,7 @@
         font-family:-apple-system,'SF Pro Text',sans-serif;font-size:12px;max-width:280px;
         box-shadow:0 8px 24px -8px rgba(0,0,0,0.6)">
         <b>${esc(n.label)}</b> <span style="font-family:'SF Mono',ui-monospace,Menlo,monospace;color:#9aa4b8">· debt ${n.debt}</span><br/>
-        <span style="color:#5b6472">${n.findings.length} finding(s)${n.isHotspot ? ', ' + n.maxSeverity : ', below gate'}</span>
+        <span style="color:#5b6472">${n.findings.length} finding(s)${n.isHotspot ? ', ' + n.maxSeverity : ', below gate'}</span>${n.renders != null ? `<br/><span style="color:#9aa4b8">${n.renders} render(s) · ${n.renderSelfMs.toFixed(1)}ms self</span>` : ''}
       </div>`)
     .linkColor(() => 'rgba(255,255,255,0.15)')
     .linkWidth(0.5)

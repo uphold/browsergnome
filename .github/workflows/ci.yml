@@ -1,6 +1,7 @@
 # CI covers only the offline chain:
-#   - all self-tests (stats / playbook / doctor / trace / bundle / lcp-attribution)
-#   - offline smoke chain: lcp_attribution → build_lcp_map, build_run_report from the sample fixture
+#   - all self-tests (stats / playbook / doctor / trace / bundle / lcp-attribution / page-tools / invariants)
+#   - offline smoke chain: lcp_attribution → build_lcp_map, build_run_report from the sample fixture,
+#     build_perf_map --renders from the render-overlay fixture pair
 #   - JSON validation of all plugin manifests
 #   - official plugin manifest validation (claude plugin validate --strict)
 #
@@ -47,12 +48,17 @@ jobs:
       - name: Offline smoke chain — build_run_report
         run: node skills/browsergnome/scripts/build_run_report.mjs skills/browsergnome/assets/run-state.sample.json --out /tmp/report.html
 
+      - name: Offline smoke chain — build_perf_map render overlay
+        run: node skills/browsergnome/scripts/build_perf_map.mjs skills/browsergnome/assets/graph.renders-sample.json --renders skills/browsergnome/assets/render-profile.sample.json --out /tmp/perf-map.html
+
       # Assert each output file exists and is non-empty.
       - name: Assert smoke-chain outputs are non-empty
         run: |
           test -s /tmp/attribution.json || (echo "attribution.json is missing or empty" && exit 1)
           test -s /tmp/lcp-map.html     || (echo "lcp-map.html is missing or empty"      && exit 1)
           test -s /tmp/report.html      || (echo "report.html is missing or empty"       && exit 1)
+          test -s /tmp/perf-map.html    || (echo "perf-map.html is missing or empty"     && exit 1)
+          grep -q '"renders":3' /tmp/perf-map.html || (echo "perf-map.html is missing the render overlay" && exit 1)
 
       - name: Validate JSON files
         run: |
@@ -64,6 +70,8 @@ jobs:
               '.mcp.json',
               'package.json',
               'skills/browsergnome/assets/run-state.sample.json',
+              'skills/browsergnome/assets/graph.renders-sample.json',
+              'skills/browsergnome/assets/render-profile.sample.json',
             ];
             let ok = true;
             for (const f of files) {

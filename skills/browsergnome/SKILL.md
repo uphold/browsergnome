@@ -11,8 +11,11 @@ It delegates measurement to `chrome-devtools-mcp` and owns the loop, gate, Ledge
 Perf Map that no measurement tool provides on its own.
 
 Perf Map 3D, the LCP Attribution Map, the knowledge base, the seeded playbook, Doctor, Dep Pulse, and
-all four Autoresearch presets (`first-load`, `bundle-size`, `interaction`, `layout-shift`) are usable
-today.
+all five Autoresearch presets (`first-load`, `bundle-size`, `interaction`, `layout-shift`,
+`re-renders`) are usable today. On React targets, Page Tools (`references/page-tools.md`) adds framework
+internals through chrome-devtools-mcp's third-party developer tools: INP blame, the `re-renders` gate,
+measured render evidence for Senior Engineer Audit findings, and a Perf Map render overlay. No edits to
+the target repo are needed.
 `layout-shift`'s gate method (`stats.mjs`'s `gateOccurrence()`) runs a Fisher's-exact test on
 shift-occurrence rate for the bimodal case where the plain gate doesn't apply — see
 `references/presets.md`'s entry and `references/measurement.md`'s worked example for the numbers. See
@@ -35,6 +38,7 @@ comes back with an unexpected shape:
 | Capture a performance trace (LCP/CLS/INP source events) | `performance_start_trace` / `performance_stop_trace` / `performance_analyze_insight` |
 | Network requests, JS eval, page snapshot, navigation, form/click interaction | `list_network_requests`, `get_network_request`, `evaluate_script`, `take_snapshot`, `navigate_page`, `click`, `type_text`, `hover`, `fill`, `fill_form`, `wait_for` |
 | JS heap snapshot | `take_heapsnapshot` (only memory primitive on the pinned version — no compare/retainers, so `memory-leaks` stays deferred) |
+| Framework internals (component tree, props/hooks, source, commit-level render profiling) | `list_3p_developer_tools` / `execute_3p_developer_tool` — tools a provider script registers in the page, injected by Page Tools (**`references/page-tools.md`**) |
 
 **Never use `lighthouse_audit` for the gate** — it explicitly excludes performance; route perf
 measurement through `performance_start_trace`. Full current tool surface, exact params, and what's
@@ -48,7 +52,8 @@ Bare invocation → present the top menu:
 
 1. **Perf Map 3D** — static repo scan → interactive 3D map → Top-3 fixes. **Works today.**
 2. **Autoresearch** — pick a preset, run the propose→measure→keep/revert loop. **`first-load`,
-   `bundle-size`, `interaction`, and `layout-shift` work today** — offer all four. For `layout-shift`
+   `bundle-size`, `interaction`, `layout-shift`, and `re-renders` work today** — offer all five
+   (`re-renders` only when `.bgn/config.json`'s `pageTools` includes `react`). For `layout-shift`
    specifically, check the target's baseline shift-occurrence rate first (`references/presets.md`'s
    entry) — the gate needs roughly ≥40% before n=10 runs/arm can detect a fix; say so plainly and fall
    back to Perf Map 3D if a pilot capture shows the target is below that, rather than running a loop the
@@ -63,7 +68,8 @@ Bare invocation → present the top menu:
 **Skip the menu when intent is explicit.** A scan/map request ("build a perf map of this repo", "what
 are the worst perf offenders here") → go straight to Perf Map 3D. "Fix my LCP" / "the homepage is slow
 to load" → `first-load`. "Shrink my bundle" / "my JS is too big" → `bundle-size`. "My INP is bad" / "the
-UI feels laggy when I click X" → `interaction`. "Fix my CLS" / "content keeps jumping" → `layout-shift`
+UI feels laggy when I click X" → `interaction`. "Too many re-renders" / "this list re-renders on every
+keystroke" → `re-renders` (React provider required; without it, `interaction`). "Fix my CLS" / "content keeps jumping" → `layout-shift`
 (check the target's baseline shift-occurrence rate first, per `references/presets.md`'s entry — below
 ~40% at n=10, say so and offer Perf Map 3D instead). A holistic/architectural ask ("what's
 architecturally wrong here", "do a senior-level review") → Senior Engineer Audit. A dependency ask
@@ -102,7 +108,13 @@ node "$BG/skills/browsergnome/scripts/build_perf_map.mjs" graph.json --out perf-
 Then open `perf-map.html` (`--open` does it; otherwise `open perf-map.html`). Node **size = perf debt**,
 **color = severity** (red CRITICAL / orange HIGH / yellow MEDIUM / grey below-gate). A search box jumps
 to any module by name; clicking a node shows the flaw, `file:line`, and the matching knowledge-base
-entry. **Present `top3` (from graph.json or printed) as candidate fixes** — hand LCP-flavored ones to
+entry. **Render overlay (React provider):** after a Page Tools profiling pass (`references/page-tools.md`),
+write `.bgn/render-profile.json` as `[{file, renders, selfMs}]`, one entry per source file, aggregated
+across the profiled commits, with `file` from `page_tools.mjs locate`. Then add
+`--renders .bgn/render-profile.json` to step 2. Matching nodes show render count and dev-build self time
+in their tooltip and detail panel; the build prints any profiled file the graph doesn't contain.
+
+**Present `top3` (from graph.json or printed) as candidate fixes** — hand LCP-flavored ones to
 `first-load` Autoresearch directly; for everything else, cite `references/knowledge/` for the fix
 pattern until the matching preset exists.
 
@@ -195,13 +207,20 @@ check — it **cannot** verify the live tool surface, since that needs an actual
 returns an unexpected shape mid-run, that's the live-drift signal, not this check), git state (via
 `parseGitState` — four states: `usable`/`no-repo`/`no-commits`/`detached`), the three stack axes (framework/bundler/host — unknown on any axis is fine, falls back to
 the generic knowledge base), whether the `modern-web-guidance` plugin is installed (nudges
-`/plugin install modern-web-guidance@googlechrome` if not — see the Knowledge base section above), and
-target URL reachability if `--url` is given.
+`/plugin install modern-web-guidance@googlechrome` if not — see the Knowledge base section above), the
+Page Tools axis (providers detected from the target's `package.json` — `react` when it depends on
+`react-dom` — plus whether the provider package is installed, the target has a `dev` script, and
+`.mcp.json` passes `--categoryExperimentalThirdParty`), and target URL reachability if `--url` is
+given.
 
 **Not implemented:** an exact-expected-tool-*list* assertion (only the version number is checked, not
-which tools that version actually exposes) or a preset-disable mechanism keyed off it. None of the four
-presets depend on anything version-fragile enough to need one yet — build this when a preset actually
-depends on a tool that could disappear, not speculatively.
+which tools that version actually exposes) or a preset-disable mechanism keyed off it. `re-renders` and
+the other Page Tools features depend on an experimental surface: the third-party tools category and
+the pinned `react-devtools-cdt-mcp` provider, whose output shape can change between versions. Doctor
+checks that the provider package is installed and the flag is passed. `page_tools.mjs`'s
+`toClassicScript()` and `renderTotal()` throw on shape drift instead of guessing. A missing `react`
+tool group makes the pass unavailable (`references/page-tools.md` step 6), never a silent fallback to
+made-up data.
 
 `--init` bootstraps `.bgn/` if missing: `perf-memory.md`, `config.json` (defaults below, pre-filled with
 the detected stack axes), `ledger/`, `archive/`, `audit/` (Senior Engineer Audit reports — see below),
@@ -210,7 +229,7 @@ the detected stack axes), `ledger/`, `archive/`, `audit/` (Senior Engineer Audit
 Re-running without `--init` on an already-bootstrapped repo just reports status and fills in a missing
 `config.json` if one was deleted.
 
-## Autoresearch — `first-load` + `bundle-size` + `interaction` + `layout-shift` (all four work today)
+## Autoresearch — `first-load` + `bundle-size` + `interaction` + `layout-shift` + `re-renders` (all five work today)
 
 Read `references/presets.md` for the preset's metric/drive/measure/guide, and
 `references/measurement.md` for the full N-run + interleaved-A/B + gate protocol before running. The
@@ -328,6 +347,27 @@ for. Full numbers: `references/measurement.md`'s "Observed noise — `layout-shi
 atomic fix (reserve the shifting element's box), N-run baseline and candidate, Fisher's exact test on
 occurrence rate, commit on KEEP.
 
+### `interaction` blame — React provider
+
+When `config.pageTools` includes `react`, step 3 (Diagnose) adds a Page Tools pass before choosing the
+fix: the same trusted interaction inside `react_start_profiling`/`react_stop_profiling`, then the
+slowest commit's report, which gives the top components by self time with `file:line` from
+`page_tools.mjs locate`. The fix targets that list. The gate stays on the production build's INP. Full
+sequence: `references/presets.md`'s `interaction` entry → **Blame**.
+
+### `re-renders` — React provider, gated on a count, on the dev server
+
+The one preset that measures the target's dev server: it gates on total components rendered for one
+fixed interaction (Σ `componentsChanged`, `page_tools.mjs`'s `renderTotal()`), a structural count
+only a dev build reports. Every capture runs inside a Page Tools pass (`references/page-tools.md`),
+and that pass's teardown always runs.
+
+**Gate:** 3 baseline captures decide the shape. Identical → deterministic, one capture per side,
+`gate()` with `minEffect: 0` (the rule is strict `>`, so any drop keeps), ledger `mode: n/a (deterministic count)`. Otherwise → N-run interleaved
+with `k`. Measured zero spread on Vite and Next.js (webpack and Turbopack) dev servers:
+`references/measurement.md`'s "Observed noise — `re-renders`". Drive and candidate fixes:
+`references/presets.md`'s `re-renders` entry.
+
 ## Performance Memory (works today)
 
 - **Read** `.bgn/perf-memory.md` at the start of any perf-related work in a `.bgn/`-tracked repo: known
@@ -355,6 +395,7 @@ Display `.bgn/config.json`, let the user edit, write back. Bootstrapped by Docto
 | `emulate` | `{cpuThrottlingRate:1, networkConditions:null, viewport:"1280x720x1"}` | no throttle by default (DevTools/Lighthouse-adjacent numbers); same conditions across all N runs is what matters for the gate, not which conditions — set `cpuThrottlingRate`/`networkConditions` here to opt into worst-case/mobile-network sensitivity |
 | `depPulse` | `true` | does the *ambient* Dep Pulse dispatch (Autoresearch Preflight, Senior Engineer Audit) run — see `references/dep-pulse.md`. A direct dependency ask always runs Dep Pulse standalone, regardless of this flag. |
 | `depPulseAutoApply` | `true` | may a benign patch bump skip the pre-install confirm (3-condition carve-out; 2 more conditions still gate KEEP) |
+| `pageTools` | detected | Page Tools providers injected for dev-server passes — `["react"]` when the target depends on `react-dom`. `[]` disables INP blame, `re-renders`, Senior Audit render evidence, and the Perf Map render overlay. See `references/page-tools.md`. |
 
 ## Senior Engineer Audit (menu item 5 — works today)
 
@@ -373,9 +414,14 @@ existing measure→gate loop.
   beats fifty leaf fixes.
 - **It fixes — it doesn't just file.** The audit ends in an AskUserQuestion menu; the user picks
   which findings browsergnome should fix and prove through the gate.
-- **Honest gate mapping.** Web has four gate presets (`first-load`, `bundle-size`, `interaction`,
-  `layout-shift` — see `references/presets.md`), not RN's `re-renders`/`listing`. A finding without a
-  clean mapping is marked **advisory**, not force-fit to a gate that doesn't measure it.
+- **Honest gate mapping.** Web has five gate presets (`first-load`, `bundle-size`, `interaction`,
+  `layout-shift`, and — with the React Page Tools provider — `re-renders`; see `references/presets.md`),
+  no `listing`. Render-cost findings gate through `re-renders` when the provider is active, and stay
+  advisory without it. A finding without a clean mapping is marked **advisory**, not force-fit to a gate
+  that doesn't measure it.
+- **Measured render evidence.** With the React provider, the top render-cost hypotheses get a Page Tools
+  profiling pass on the interaction they affect at the signal-vs-noise step (Step 4). The finding carries commit count,
+  total components rendered, and the top components with `file:line`. See `references/senior-audit.md`.
 
 The audit's own Step 1 (Grounding) also dispatches the Dep Pulse subagent (same condition as
 Autoresearch's Preflight above), and Step 6 (Write Report + Present Menu) surfaces pulse findings
@@ -421,8 +467,12 @@ memo is written, not assumed clean because the revert steps ran.
   branch on stack — stack awareness lives only in Doctor's detection and these files.** No
   `hosts/static-cdn.md` — `detectHost` never returns that value, so there's nothing for it to route
   to; add the file only if `detectHost` ever grows a matching branch.
-- `references/presets.md` — the 4 presets: metric, drive, measure, guide, candidate fixes. All four are
-  implemented; `layout-shift`'s `gateOccurrence()` runs a Fisher's-exact test on shift-occurrence rate.
+- `references/presets.md` — the 5 presets: metric, drive, measure, guide, candidate fixes. All five are
+  implemented; `layout-shift`'s `gateOccurrence()` runs a Fisher's-exact test on shift-occurrence rate;
+  `re-renders` requires the React Page Tools provider.
+- `references/page-tools.md` — Page Tools: provider injection via `initScript` with zero target-repo
+  edits, third-party tool discovery, source location, dev-server lifecycle and its mandatory teardown,
+  measured results on Vite and Next.js dev servers.
 - `references/measurement.md` — N-run protocol (with a real measured warmup-discard example),
   interleaved A/B design + the mechanical rebuild-fallback rule, gate math, and why `bundle-size`
   deliberately skips N-run characterization (deterministic builds, no noise to measure).
@@ -471,3 +521,10 @@ memo is written, not assumed clean because the revert steps ran.
   layer, mirroring `build_perf_map.mjs`'s marker-based merge. Dark canvas, degraded chunk-only path
   rendered as first-class (no bundle stats).
 - `scripts/stats.mjs` — the gate arbiter (`--self-test` covers edge cases).
+- `scripts/page_tools.mjs` — Page Tools: `serve` (provider scripts on 127.0.0.1 with CORS), `loader`
+  (the `initScript`), `locate` (component name → `file:line` in the original source), plus the pure
+  `detectProviders`/`normalizeSource`/`renderTotal`/`mergeRenders` (imported by `doctor.mjs` and
+  `build_perf_map.mjs`; CLI-guarded).
+- `assets/graph.renders-sample.json` + `assets/render-profile.sample.json` — a real `perf_scan.mjs`
+  graph of a Vite React app and a render profile for it; the CI smoke fixture for
+  `build_perf_map.mjs --renders`.

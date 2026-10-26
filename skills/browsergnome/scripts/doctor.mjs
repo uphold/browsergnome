@@ -29,6 +29,7 @@ import process from 'node:process';
 import { execSync, execFileSync } from 'node:child_process';
 import os from 'node:os';
 import { pathToFileURL } from 'node:url';
+import { detectProviders, PROVIDERS } from './page_tools.mjs';
 
 // ── Pure detection functions (exported; no I/O — all inputs are strings/booleans) ─
 
@@ -117,6 +118,30 @@ export function checkVersionPin(mcpJsonText, toolsMdText) {
 }
 
 /**
+ * Page Tools needs chrome-devtools-mcp launched with the third-party developer tools category.
+ * @param {string|null} mcpJsonText
+ * @returns {boolean}
+ */
+export function checkThirdPartyFlag(mcpJsonText) {
+  return /"--categoryExperimentalThirdParty"/.test(mcpJsonText || '');
+}
+
+/**
+ * The React provider's exact version in this plugin's package.json must match tools.md's
+ * ``**Pinned: `react-devtools-cdt-mcp@X.Y.Z`.**`` line — same class as checkVersionPin.
+ * @param {string|null} pkgJsonText
+ * @param {string|null} toolsMdText
+ * @returns {{ pkgPin:string|null, docsPin:string|null, agree:boolean }}
+ */
+export function checkProviderPin(pkgJsonText, toolsMdText) {
+  const pkgMatch = pkgJsonText?.match(/"react-devtools-cdt-mcp"\s*:\s*"(\d[\d.]*)"/);
+  const docsMatch = toolsMdText?.match(/Pinned:\s*`react-devtools-cdt-mcp@([\d.]+)`/);
+  const pkgPin = pkgMatch ? pkgMatch[1] : null;
+  const docsPin = docsMatch ? docsMatch[1] : null;
+  return { pkgPin, docsPin, agree: pkgPin != null && pkgPin === docsPin };
+}
+
+/**
  * Parse a simple `curl -sI -o /dev/null -w '%{http_code}'`-style status
  * code string.
  * @param {string|null} statusCodeOut
@@ -167,6 +192,7 @@ const DEFAULT_CONFIG = (axes) => ({
   framework: axes.framework,
   bundler: axes.bundler,
   host: axes.host,
+  pageTools: axes.pageTools,  // Page Tools providers injected for dev-server passes (auto-detected; [] disables) — see references/page-tools.md
   emulate: {
     cpuThrottlingRate: 1,     // 1-20; 1 = no slowdown, matches DevTools/Lighthouse-adjacent numbers
     networkConditions: null,  // null | 'Offline' | 'Slow 3G' | 'Fast 3G' | 'Slow 4G' | 'Fast 4G'
@@ -283,6 +309,18 @@ function selfTest() {
     check('drifted pins disagree', r2.agree, false);
     check('drifted pins → both values reported', [r2.mcpPin, r2.docsPin], ['1.7.0', '1.6.0']);
     check('missing file → no agreement, no crash', checkVersionPin(null, null).agree, false);
+    const withFlag = '{"mcpServers":{"chrome-devtools":{"args":["chrome-devtools-mcp@1.6.0", "--categoryExperimentalThirdParty"]}}}';
+    check('pin still parsed with the 3p flag arg present', checkVersionPin(withFlag, '**Pinned: `chrome-devtools-mcp@1.6.0`.**').agree, true);
+    check('3p flag present', checkThirdPartyFlag(withFlag), true);
+    check('3p flag absent', checkThirdPartyFlag('{"mcpServers":{"chrome-devtools":{"args":["chrome-devtools-mcp@1.6.0"]}}}'), false);
+  }
+
+  // checkProviderPin
+  {
+    const pkg = '{"dependencies":{"react-devtools-cdt-mcp": "0.1.0"}}';
+    check('provider pins agree', checkProviderPin(pkg, '**Pinned: `react-devtools-cdt-mcp@0.1.0`.**').agree, true);
+    check('provider pin drift', checkProviderPin(pkg, '**Pinned: `react-devtools-cdt-mcp@0.2.0`.**').agree, false);
+    check('range (non-exact) dep → no pin', checkProviderPin('{"dependencies":{"react-devtools-cdt-mcp":"^0.1.0"}}', '**Pinned: `react-devtools-cdt-mcp@0.1.0`.**').pkgPin, null);
   }
 
   // DEFAULT_CONFIG — depPulse keys
@@ -290,6 +328,7 @@ function selfTest() {
     const cfg = DEFAULT_CONFIG({ framework: 'unknown', bundler: 'unknown', host: 'unknown' });
     check('DEFAULT_CONFIG.depPulse defaults true', cfg.depPulse, true);
     check('DEFAULT_CONFIG.depPulseAutoApply defaults true', cfg.depPulseAutoApply, true);
+    check('DEFAULT_CONFIG.pageTools carries the detected providers', DEFAULT_CONFIG({ pageTools: ['react'] }).pageTools, ['react']);
     check('GITIGNORE_CONTENT covers dep-pulse.json (bootstrap() backfills this on old repos)',
       GITIGNORE_CONTENT.includes('dep-pulse.json'), true);
   }
@@ -350,7 +389,24 @@ function gatherAxes() {
     hasDockerfile: exists(path.join(repo, 'Dockerfile')),
     hasServerJs: exists(path.join(repo, 'server.js')),
   });
-  return { framework: framework.framework, bundler: bundler.bundler, host: host.host, sources: { framework: framework.source, bundler: bundler.source, host: host.source } };
+  const pageTools = detectProviders(read(path.join(repo, 'package.json')));
+  return { framework: framework.framework, bundler: bundler.bundler, host: host.host, pageTools, sources: { framework: framework.source, bundler: bundler.source, host: host.source } };
+}
+
+function printPageTools(axes, mcpJsonText) {
+  if (!axes.pageTools.length) {
+    console.log(`  ${warn} page tools: none (no provider trigger dependency) — React-only features (INP blame, re-renders, render overlay) unavailable`);
+    return;
+  }
+  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../..');
+  const missing = axes.pageTools.filter((id) => !exists(path.join(pluginRoot, 'node_modules', PROVIDERS[id].pkg, PROVIDERS[id].script)));
+  const devScript = (() => { try { return JSON.parse(read(path.join(repo, 'package.json'))).scripts?.dev ?? null; } catch { return null; } })();
+  const flag = checkThirdPartyFlag(mcpJsonText);
+  console.log(`  ${ok(!missing.length && devScript && flag)} page tools: ${axes.pageTools.join(', ')} (package.json dependency)`);
+  if (missing.length) console.log(`        provider package missing (${missing.map((id) => PROVIDERS[id].pkg).join(', ')}) — run: npm --prefix "${pluginRoot}" install`);
+  if (!devScript) console.log(`        no "dev" script in package.json — page-tools passes need a dev server`);
+  else console.log(`        dev server: npm run dev  (${devScript})`);
+  if (!flag) console.log(`        .mcp.json lacks --categoryExperimentalThirdParty — third-party tools won't be discovered`);
 }
 
 function main() {
@@ -418,6 +474,7 @@ function main() {
   console.log(`  ${ok(axes.framework !== 'unknown')} framework: ${axes.framework} (${axes.sources.framework})`);
   console.log(`  ${ok(axes.bundler !== 'unknown')} bundler: ${axes.bundler} (${axes.sources.bundler})`);
   console.log(`  ${ok(axes.host !== 'unknown')} host: ${axes.host} (${axes.sources.host})`);
+  printPageTools(axes, read(mcpJsonPath));
   if (axes.framework === 'unknown' || axes.bundler === 'unknown' || axes.host === 'unknown') {
     console.log(`  ${warn} unknown axes fall back to the generic knowledge base — still fully functional.`);
   }

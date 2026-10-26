@@ -9,7 +9,10 @@
  * files. That's what makes it safe to hand to anyone / open on a plane.
  *
  * Usage:
- *   node build_perf_map.mjs <graph.json> [--out perf-map.html] [--open]
+ *   node build_perf_map.mjs <graph.json> [--out perf-map.html] [--renders render-profile.json] [--open]
+ *
+ * --renders overlays a Page Tools render profile (`[{file, renders, selfMs}]`, written by the agent
+ * from a react_* profiling pass — see references/page-tools.md) onto matching nodes before injection.
  */
 
 import fs from 'node:fs';
@@ -17,6 +20,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
+import { mergeRenders } from './page_tools.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS = path.resolve(__dirname, '..', 'assets');
@@ -31,19 +35,26 @@ function main() {
   const open = args.includes('--open');
   const outIdx = args.indexOf('--out');
   const outFile = outIdx >= 0 ? args[outIdx + 1] : 'perf-map.html';
-  const outValIdx = outIdx >= 0 ? outIdx + 1 : -1; // index of --out's value, if any
-  const graphFile = args.find((a, i) => !a.startsWith('--') && i !== outValIdx);
+  const rendersIdx = args.indexOf('--renders');
+  const rendersFile = rendersIdx >= 0 ? args[rendersIdx + 1] : null;
+  const valueIdxs = [outIdx, rendersIdx].filter((i) => i >= 0).map((i) => i + 1); // flag values, not the graph arg
+  const graphFile = args.find((a, i) => !a.startsWith('--') && !valueIdxs.includes(i));
 
   if (!graphFile) {
-    console.error('usage: node build_perf_map.mjs <graph.json> [--out perf-map.html] [--open]');
+    console.error('usage: node build_perf_map.mjs <graph.json> [--out perf-map.html] [--renders render-profile.json] [--open]');
     process.exit(1);
   }
-  for (const [p, what] of [[graphFile, 'graph'], [TEMPLATE, 'template'], [LIB, 'vendored lib']]) {
+  for (const [p, what] of [[graphFile, 'graph'], [TEMPLATE, 'template'], [LIB, 'vendored lib'], ...(rendersFile ? [[rendersFile, 'render profile']] : [])]) {
     if (!fs.existsSync(p)) { console.error(`missing ${what}: ${p}`); process.exit(1); }
   }
 
-  const graphRaw = fs.readFileSync(graphFile, 'utf8');
-  const graph = JSON.parse(graphRaw); // validate it parses before embedding
+  let graphRaw = fs.readFileSync(graphFile, 'utf8');
+  let graph = JSON.parse(graphRaw); // validate it parses before embedding
+  let unmatched = [];
+  if (rendersFile) {
+    ({ graph, unmatched } = mergeRenders(graph, JSON.parse(fs.readFileSync(rendersFile, 'utf8'))));
+    graphRaw = JSON.stringify(graph);
+  }
   const template = fs.readFileSync(TEMPLATE, 'utf8');
   const lib = fs.readFileSync(LIB, 'utf8');
 
@@ -66,6 +77,10 @@ function main() {
   console.log(`\nbrowsergnome perf-map`);
   console.log(`  wrote ${outAbs} (${kb} KB, standalone)`);
   console.log(`  ${s.nodes ?? '?'} modules · ${s.hotspots ?? '?'} hotspot(s) · ${s.findings ?? '?'} findings`);
+  if (rendersFile) {
+    const overlaid = graph.nodes.filter((n) => 'renders' in n).length;
+    console.log(`  render overlay: ${overlaid} module(s)${unmatched.length ? ` · ${unmatched.length} profiled file(s) not in the graph: ${unmatched.join(', ')}` : ''}`);
+  }
   if (graph.top3?.length) {
     console.log(`  Top-3:`);
     for (const t of graph.top3) console.log(`    ${t.rank}. ${t.paste}  (debt ${t.debt})`);

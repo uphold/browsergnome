@@ -1,0 +1,12 @@
+[
+  {
+    "file": "src/App.jsx",
+    "renders": 3,
+    "selfMs": 3.3
+  },
+  {
+    "file": "src/main.jsx",
+    "renders": 0,
+    "selfMs": 0
+  }
+]
