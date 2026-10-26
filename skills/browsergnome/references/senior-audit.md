@@ -112,7 +112,7 @@ pass (`references/page-tools.md`). For each, profile that interaction once:
 `react_start_profiling` → trusted `click`/`type_text` → `react_stop_profiling` →
 `react_get_trace_overview` + the heaviest commit's `react_get_commit_report`. Attach:
 - commit count;
-- total components rendered (`renderTotal()`);
+- total components rendered (`page_tools.mjs total`);
 - the top components by self time with `file:line` from `page_tools.mjs locate`.
 
 For entry 6, also attach whether the component's uid survived the interaction, since a remount changes

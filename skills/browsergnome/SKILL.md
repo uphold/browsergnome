@@ -225,7 +225,7 @@ made-up data.
 `--init` bootstraps `.bgn/` if missing: `perf-memory.md`, `config.json` (defaults below, pre-filled with
 the detected stack axes), `ledger/`, `archive/`, `audit/` (Senior Engineer Audit reports — see below),
 `what-if/` (`/what-if` decision memos — see below), `.gitignore` (excludes
-`report.html`/`run-state.json`/`dep-pulse.json`).
+`report.html`/`run-state.json`/`dep-pulse.json`/`render-profile.json`).
 Re-running without `--init` on an already-bootstrapped repo just reports status and fills in a missing
 `config.json` if one was deleted.
 
@@ -358,7 +358,7 @@ sequence: `references/presets.md`'s `interaction` entry → **Blame**.
 ### `re-renders` — React provider, gated on a count, on the dev server
 
 The one preset that measures the target's dev server: it gates on total components rendered for one
-fixed interaction (Σ `componentsChanged`, `page_tools.mjs`'s `renderTotal()`), a structural count
+fixed interaction (Σ `componentsChanged`, `page_tools.mjs total`), a structural count
 only a dev build reports. Every capture runs inside a Page Tools pass (`references/page-tools.md`),
 and that pass's teardown always runs.
 
@@ -522,7 +522,8 @@ memo is written, not assumed clean because the revert steps ran.
   rendered as first-class (no bundle stats).
 - `scripts/stats.mjs` — the gate arbiter (`--self-test` covers edge cases).
 - `scripts/page_tools.mjs` — Page Tools: `serve` (provider scripts on 127.0.0.1 with CORS), `loader`
-  (the `initScript`), `locate` (component name → `file:line` in the original source), plus the pure
+  (the `initScript`), `locate` (component name → `file:line` in the original source), `total` (the `re-renders` gate value
+  from a trace overview), plus the pure
   `detectProviders`/`normalizeSource`/`renderTotal`/`mergeRenders` (imported by `doctor.mjs` and
   `build_perf_map.mjs`; CLI-guarded).
 - `assets/graph.renders-sample.json` + `assets/render-profile.sample.json` — a real `perf_scan.mjs`

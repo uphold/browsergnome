@@ -218,6 +218,7 @@ const GITIGNORE_CONTENT = `# browsergnome — generated run artifacts (not commi
 report.html
 run-state.json
 dep-pulse.json
+render-profile.json
 `;
 
 function bootstrap(axes) {
@@ -246,7 +247,7 @@ function bootstrap(axes) {
   }
 
   console.log(`  bootstrapped ${path.relative(repo, dir) || '.bgn'}/ (perf-memory.md, config.json, ledger/, archive/, audit/, what-if/)`);
-  console.log(`  .bgn/.gitignore created — report.html, run-state.json, and dep-pulse.json are gitignored`);
+  console.log(`  .bgn/.gitignore created — report.html, run-state.json, dep-pulse.json, and render-profile.json are gitignored`);
 }
 
 // ── Self-test (CI contract — short-circuits before main() I/O) ────────────────
@@ -331,6 +332,7 @@ function selfTest() {
     check('DEFAULT_CONFIG.pageTools carries the detected providers', DEFAULT_CONFIG({ pageTools: ['react'] }).pageTools, ['react']);
     check('GITIGNORE_CONTENT covers dep-pulse.json (bootstrap() backfills this on old repos)',
       GITIGNORE_CONTENT.includes('dep-pulse.json'), true);
+    check('GITIGNORE_CONTENT covers render-profile.json', GITIGNORE_CONTENT.includes('render-profile.json'), true);
   }
 
   // backfillConfig — fills missing top-level keys, never overwrites present ones

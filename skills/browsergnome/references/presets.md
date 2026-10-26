@@ -237,8 +237,8 @@ over-memoization), or an `interaction` blame list dominated by repeated commits.
 back to `interaction` for a timing-visible symptom.
 
 **Metric:** total components rendered for one fixed interaction (lower is better). This is
-Σ `componentsChanged` across every commit in a `react_get_trace_overview`, computed by `page_tools.mjs`'s
-`renderTotal()`. It counts host components too, and includes StrictMode's development behavior. Both
+Σ `componentsChanged` across every commit in a `react_get_trace_overview`, computed by
+`node page_tools.mjs total < overview.json` (`renderTotal()`, which fails on an unexpected shape). It counts host components too, and includes StrictMode's development behavior. Both
 sides share both, so they cancel. Reported alongside, never gated: commit count and the top
 components by render count.
 
@@ -254,7 +254,7 @@ navigate_page { type: "url", url: <target route>, initScript: <loader> }   (fres
   → react_start_profiling { traceName: "rr-<side>-<n>" }
   → the fixed interaction script: click / type_text with identical inputs every capture
   → react_stop_profiling
-  → react_get_trace_overview { traceName } → renderTotal()
+  → react_get_trace_overview { traceName } → save the result as overview.json → page_tools.mjs total < overview.json
 ```
 Use trusted input tools only (`click`, `type_text`, `press_key`), never `evaluate_script`. Same rule
 and reason as `interaction`.

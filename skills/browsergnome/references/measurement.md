@@ -445,7 +445,7 @@ whole trace) — that's a `trace_metrics.mjs` change, not something to invent ad
 ## Observed noise — `re-renders` / total components rendered
 
 The metric is Σ `componentsChanged` across every commit of one fixed interaction, read from the React
-Page Tools provider's `react_get_trace_overview` (`page_tools.mjs`'s `renderTotal()`). It is a count of
+Page Tools provider's `react_get_trace_overview` (`page_tools.mjs total`). It is a count of
 what React rendered, not a duration. That is why it can gate on a dev server when timings can't:
 dev-mode overhead (unbundled modules, dev-only checks) changes how long a render takes, not which
 components render.

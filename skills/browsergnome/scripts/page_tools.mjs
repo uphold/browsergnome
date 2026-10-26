@@ -19,7 +19,8 @@
  * Usage:
  *   node page_tools.mjs serve --providers react [--port 0]   # first stdout line: {"port":N,"pid":P}
  *   node page_tools.mjs loader --port N [--provider react]    # prints the initScript loader
- *   node page_tools.mjs locate --repo <dir> --name <Component> [--file <rel>]  # → [{file,line}]
+ *   node page_tools.mjs locate --repo <dir> --name <Component> [--file <fileName>]  # → [{file,line}]
+ *   node page_tools.mjs total < overview.json   # re-renders gate value: renderTotal() of a trace overview
  *   node page_tools.mjs --self-test
  */
 
@@ -54,7 +55,7 @@ export function detectProviders(pkgJsonText) {
 }
 
 const TRAILING_EXPORT = /\n\s*export\s*\{[^}]*\}\s*;?\s*$/;
-const TOP_LEVEL_ESM = /^(import\s*[\w{*'"]|export\s)/m;
+const TOP_LEVEL_ESM = /^(import(\s+[\w{*]|\s*['"{*])|export[\s{])/m; // not importScripts( / import( / exports.
 
 /**
  * Strip the provider bundle's single trailing `export { … };` so it evaluates as a classic script.
@@ -141,22 +142,36 @@ export function locateComponent(fileText, name) {
 }
 
 /**
- * Perf Map overlay: copy render counts onto graph.json nodes. A node matches when its id (perf_scan's
- * path relative to the scanned root) equals the profile entry's file, or is its path suffix (scan
- * rooted at a subdirectory like src/).
+ * Perf Map overlay: copy render counts onto graph.json nodes. Node ids are perf_scan paths relative
+ * to the scanned root; profile files are repo-relative. One scan-root prefix (`''`, or e.g. `src/`
+ * for a scan rooted at a subdirectory) holds for the whole graph: each entry votes for the prefix its
+ * longest matching id implies, the majority wins (ties → the shorter prefix), and an entry matches
+ * only as `prefix + id`. So `src/features/App.tsx` never lands on a root `App.tsx`. Throws on a
+ * non-numeric `renders`/`selfMs` (the profile is agent-written — fail, don't render NaN).
  * @param {{nodes:Array<{id:string}>}} graph
  * @param {Array<{file:string, renders:number, selfMs:number}>} profile
  * @returns {{graph:object, unmatched:string[]}}
  */
 export function mergeRenders(graph, profile) {
-  const unmatched = [];
   const nodes = graph.nodes.map((n) => ({ ...n }));
-  for (const e of profile) {
-    const node = nodes.find((n) => n.id === e.file) || nodes.find((n) => e.file.endsWith('/' + n.id));
-    if (!node) { unmatched.push(e.file); continue; }
-    node.renders = Number(e.renders);
-    node.renderSelfMs = Number(e.selfMs);
-  }
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const prefixOf = (file) => {
+    const parts = file.split('/');
+    const i = parts.findIndex((_, i) => byId.has(parts.slice(i).join('/'))); // first hit = longest id
+    return i < 0 ? null : parts.slice(0, i).map((d) => d + '/').join('');
+  };
+  const votes = {};
+  for (const e of profile) { const p = prefixOf(e.file); if (p !== null) votes[p] = (votes[p] || 0) + 1; }
+  const [prefix = ''] = Object.keys(votes).sort((a, b) => votes[b] - votes[a] || a.length - b.length);
+  const unmatched = [];
+  profile.forEach((e, i) => {
+    const renders = Number(e.renders), selfMs = Number(e.selfMs);
+    if (!Number.isFinite(renders) || !Number.isFinite(selfMs)) throw new Error(`render profile entry ${i} (${e.file}): renders and selfMs must be numbers`);
+    const node = e.file.startsWith(prefix) && byId.get(e.file.slice(prefix.length));
+    if (!node) return unmatched.push(e.file);
+    node.renders = renders;
+    node.renderSelfMs = selfMs;
+  });
   return { graph: { ...graph, nodes }, unmatched };
 }
 
@@ -177,18 +192,22 @@ function* sourceFiles(dir) {
   }
 }
 
+// --file takes the provider's raw source.fileName (or a repo-relative path) and normalizes it. A path
+// that's null, missing on disk (e.g. a Vite `base`/`root` remap), or lacks the definition falls back
+// to a by-name search of the whole repo.
 function locate() {
   const repoDir = path.resolve(arg('--repo', '.'));
   const name = arg('--name');
   const file = arg('--file');
-  if (!name) { console.error('usage: node page_tools.mjs locate --repo <dir> --name <Component> [--file <rel>]'); process.exit(1); }
-  const candidates = file ? [path.join(repoDir, file)] : sourceFiles(repoDir);
-  const hits = [];
-  for (const abs of candidates) {
-    const line = fs.existsSync(abs) ? locateComponent(fs.readFileSync(abs, 'utf8'), name) : null;
-    if (line) hits.push({ file: path.relative(repoDir, abs), line });
-  }
-  console.log(JSON.stringify(hits));
+  if (!name) { console.error('usage: node page_tools.mjs locate --repo <dir> --name <Component> [--file <fileName>]'); process.exit(1); }
+  const find = (files) => [...files].flatMap((abs) => {
+    const line = locateComponent(fs.readFileSync(abs, 'utf8'), name);
+    return line ? [{ file: path.relative(repoDir, abs), line }] : [];
+  });
+  const rel = file && (normalizeSource(file, repoDir) ?? file);
+  const abs = rel && path.join(repoDir, rel);
+  const hits = abs && fs.existsSync(abs) && fs.statSync(abs).isFile() ? find([abs]) : [];
+  console.log(JSON.stringify(hits.length ? hits : find(sourceFiles(repoDir))));
 }
 
 function serve() {
@@ -236,6 +255,8 @@ function selfTest() {
   check('rejects a top-level import', throws(() => toClassicScript("import x from 'y';\n" + bundle)), true);
   check('rejects a second export', throws(() => toClassicScript('export const a = 1;\n' + bundle)), true);
   check('ignores "import"/"export" inside indented code and identifiers', throws(() => toClassicScript("  importScripts();\nvar exportsX = 1;\n" + bundle)), false);
+  check('ignores column-0 identifiers starting with import/export', throws(() => toClassicScript("importScripts();\nimportantFlag = 1;\nexports.x = 1;\nimport('./lazy.js');\n" + bundle)), false);
+  check('rejects import{…}/import"…"/export{…} without spaces', ['import{a}from"b";\n', 'import"side";\n', 'export{a};\nvar b;\n'].map((h) => throws(() => toClassicScript(h + bundle))), [true, true, true]);
 
   // loaderScript
   const l = loaderScript(5299, 'react');
@@ -276,17 +297,27 @@ function selfTest() {
   check('non-identifier name (e.g. "Unknown()") → null', locateComponent(src, 'Anonymous()'), null);
 
   // mergeRenders
-  const graph = { meta: {}, nodes: [{ id: 'src/App.jsx' }, { id: 'components/Row.tsx' }, { id: 'src/util.js' }] };
+  const graph = { meta: {}, nodes: [{ id: 'src/App.jsx' }, { id: 'src/components/Row.tsx' }, { id: 'src/util.js' }] };
   const merged = mergeRenders(graph, [
     { file: 'src/App.jsx', renders: 3, selfMs: 1.1 },
     { file: 'src/components/Row.tsx', renders: 40, selfMs: 6.2 },
     { file: 'src/Gone.tsx', renders: 1, selfMs: 0.1 },
   ]);
   check('exact id match', [merged.graph.nodes[0].renders, merged.graph.nodes[0].renderSelfMs], [3, 1.1]);
-  check('suffix match (scan rooted at src/)', merged.graph.nodes[1].renders, 40);
+  check('nested exact match (scan rooted at the repo)', merged.graph.nodes[1].renders, 40);
   check('unprofiled node untouched', 'renders' in merged.graph.nodes[2], false);
   check('unmatched reported', merged.unmatched, ['src/Gone.tsx']);
   check('input graph not mutated', 'renders' in graph.nodes[0], false);
+  // scan rooted at src/: ids are scan-relative, profile files repo-relative
+  const sub = { nodes: [{ id: 'index.tsx' }, { id: 'App.tsx' }, { id: 'components/Row/index.tsx' }] };
+  const s = mergeRenders(sub, [
+    { file: 'src/components/Row/index.tsx', renders: 40, selfMs: 6 },
+    { file: 'src/index.tsx', renders: 1, selfMs: 0.5 },
+    { file: 'src/features/App.tsx', renders: 2, selfMs: 1 },
+  ]);
+  check('longest suffix wins over a short root id', [s.graph.nodes[2].renders, s.graph.nodes[0].renders], [40, 1]);
+  check('file absent from graph is reported, not attached to a same-named root file', [s.unmatched, 'renders' in s.graph.nodes[1]], [['src/features/App.tsx'], false]);
+  check('non-numeric selfMs → throws', throws(() => mergeRenders(graph, [{ file: 'src/App.jsx', renders: 1 }])), true);
 
   console.log(`\n  ${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
@@ -297,12 +328,13 @@ function main() {
   if (cmd === '--self-test') return selfTest();
   if (cmd === 'serve') return serve();
   if (cmd === 'locate') return locate();
+  if (cmd === 'total') return console.log(renderTotal(JSON.parse(fs.readFileSync(0, 'utf8')))); // overview JSON on stdin
   if (cmd === 'loader') {
     const port = Number(arg('--port'));
     if (!port) { console.error('usage: node page_tools.mjs loader --port N [--provider react]'); process.exit(1); }
     return console.log(loaderScript(port, arg('--provider', 'react')));
   }
-  console.error('usage: node page_tools.mjs serve --providers react [--port 0] | loader --port N [--provider react] | locate --repo <dir> --name <Component> [--file <rel>] | --self-test');
+  console.error('usage: node page_tools.mjs serve --providers react [--port 0] | loader --port N [--provider react] | locate --repo <dir> --name <Component> [--file <fileName>] | total < overview.json | --self-test');
   process.exit(1);
 }
 
