@@ -20,10 +20,12 @@ stability, code-splitting, render cascades).
 
 **Rule:** never optimize without profiling. Reporting sub-1ms findings as hypotheses is noise.
 
-**Gate presets available on web** (no render-count gate exists — see `references/presets.md`):
-`first-load` (LCP) · `layout-shift` (CLS) · `bundle-size` (shipped bytes) · `interaction` (INP). A
-finding without a clean mapping to one of these is **advisory** — say so plainly, don't invent gate
-coverage that doesn't exist.
+**Gate presets available on web** (see `references/presets.md`): `first-load` (LCP) · `layout-shift`
+(CLS) · `bundle-size` (shipped bytes) · `interaction` (INP) · `re-renders` (total components rendered
+per interaction — requires the React Page Tools provider, `references/page-tools.md`). Without the
+React provider, entries below that name `re-renders` fall back to the advisory text that follows it. A
+finding without a clean mapping is **advisory** — say so plainly, don't invent gate coverage that
+doesn't exist.
 
 ---
 
@@ -69,9 +71,11 @@ or memoized.
 `_app.tsx`) or root providers. Flag object-literal or merged-state `value=` props. Count consumers
 (`useContext(...)` call sites) to establish blast radius.
 
-**Gate preset.** Advisory — none of the four web presets measures render count directly.
-`interaction` may show a partial signal if the re-render cascade is heavy enough to affect INP on a
-real interaction, but that's an indirect, noisier proxy — don't claim it as direct proof.
+**Gate preset.** `re-renders` (React provider) — splitting the value from the setter or narrowing the
+context drops the consumers that re-render on each update, which is exactly what the count measures.
+Without the provider: advisory. `interaction` may show a partial signal if the re-render cascade is
+heavy enough to affect INP on a real interaction, but that's an indirect, noisier proxy — don't claim
+it as direct proof.
 
 ---
 
@@ -139,7 +143,8 @@ mechanically (suppressed automatically when React Compiler is detected — see
 `references/perf-map.md`). The audit layer explains blast radius when the affected component sits
 under a high-render-frequency parent.
 
-**Gate preset.** Advisory — no direct web render-count gate. If the component sits on the
+**Gate preset.** `re-renders` (React provider) — a stabilized prop lets `memo` bail out, so the child
+subtree drops out of the count. Without the provider: advisory. If the component sits on the
 interaction-critical path, `interaction` (INP) may show a partial signal.
 
 ---
@@ -159,8 +164,11 @@ layer explains why it's architecturally costly beyond the linter hint — a comp
 still worth doing to confirm the child isn't trivially cheap to remount (a truly stateless leaf with
 no effects pays little for this pattern; a form field or an animated element pays a lot).
 
-**Gate preset.** Advisory — no direct web render-count gate to prove a remount count dropped to
-zero. `interaction` may show a partial signal if the remount happens on the interaction path.
+**Gate preset.** Advisory for the count — a remounted subtree and an updated one both render, so
+`re-renders` alone doesn't prove the remount is gone. With the React provider the remount itself is
+observable: a component's uid is stable across re-renders and changes on remount, so
+`react_find_components` before and after the interaction shows whether the uid survived. Attach that
+as evidence. `interaction` may show a partial signal if the remount happens on the interaction path.
 
 ---
 
@@ -231,8 +239,10 @@ overhead is measurable and the code complexity is real debt either way.
 check `perf_scan.mjs`'s React Compiler suppression uses — see `references/perf-map.md`). If the
 Compiler is absent on a React 19+ codebase, the fix is enabling it, not stripping wrappers first.
 
-**Gate preset.** Advisory — no direct web render-count gate. `interaction` may show a partial signal
-if the affected component sits on the interaction-critical path.
+**Gate preset.** `re-renders` (React provider) as a **non-regression** gate — removing manual
+memoization the compiler already covers must not increase the count. Without the provider: advisory.
+`interaction` may show a partial signal if the affected component sits on the interaction-critical
+path.
 
 ---
 
@@ -253,7 +263,9 @@ or more effects that each trigger a further state update is a cascade regardless
 render cost.
 
 **Gate preset.** `interaction` if the cascade is triggered by a real user interaction (INP captures
-the cumulative cost of the chain, not just the first render) — otherwise advisory.
+the cumulative cost of the chain, not just the first render). With the React provider, `re-renders` as
+well — each link of the chain is a commit, so collapsing the cascade drops both the commit count and
+the total. Otherwise advisory.
 
 ---
 

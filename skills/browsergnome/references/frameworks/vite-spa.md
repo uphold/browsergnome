@@ -39,3 +39,7 @@ that production build compressed too — that part isn't Vite-specific, it's the
 `references/presets.md`'s `first-load` entry already states for every target.) See `references/
 measurement.md`'s second `first-load` noise characterization (measured on this exact stack) for the
 numbers.
+
+## Page Tools dev server
+
+Start for a Page Tools pass (`references/page-tools.md`) with `npm run dev -- --port <port> --strictPort` (`--strictPort` makes a taken port fail instead of silently moving). Measured: component source arrives as `http://localhost:<port>/src/…`, which `normalizeSource` maps to `src/…`; the reported `line` is in Vite's transformed output, so the definition line comes from `page_tools.mjs locate`.

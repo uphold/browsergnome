@@ -20,7 +20,7 @@ No build step. Node ≥ 18, ESM throughout.
 ```bash
 npm test                 # self-tests + the invariants check, chained
 npm run stats:test       # a single self-test suite (also: playbook:test doctor:test trace:test
-                          #   bundle:test lcp-attribution:test invariants:test)
+                          #   bundle:test lcp-attribution:test page-tools:test invariants:test)
 npm run invariants       # the invariants check itself (not a self-test — asserts this repo's own
                           #   files agree; see "Cross-file invariants" below)
 ```
@@ -52,9 +52,10 @@ Read `CLAUDE.md` before changing runtime behavior — it documents the cross-fil
 chrome-devtools-mcp version pin, the stack-catalog filenames, the perf-map calibration numbers) that
 have no other single source of truth and silently drift if only one side of an edit lands.
 
-`npm run invariants` (part of `npm test`) mechanically checks four of these — the chrome-devtools-mcp
-pin, the stack-catalog filenames, the `depPulse`/`depPulseAutoApply` config keys, and the Perf Map
-calibration SHA — and fails the build on drift. Two invariants stay a manual review responsibility,
+`npm run invariants` (part of `npm test`) mechanically checks the chrome-devtools-mcp pin and its
+`--categoryExperimentalThirdParty` flag, the `react-devtools-cdt-mcp` pin, the stack-catalog filenames,
+the `depPulse`/`depPulseAutoApply`/`pageTools` config keys, and the Perf Map calibration SHA, and fails
+the build on drift. Two invariants stay a manual review responsibility,
 because a script can't meaningfully check them: the "one confident, unhedged voice" rule across
 product docs is editorial, not mechanical; and the `Guidance:` ids resolve against the external
 `modern-web-guidance` catalog, which isn't installed in CI.

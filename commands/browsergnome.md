@@ -5,7 +5,8 @@ argument-hint: "<natural-language goal> | scan <path> | map <graph.json> | first
 ---
 
 browsergnome routes web performance work through chrome-devtools-mcp, runs a scientific propose →
-measure → keep/revert loop (`first-load`, `bundle-size`, `interaction`, and `layout-shift`), builds a
+measure → keep/revert loop (`first-load`, `bundle-size`, `interaction`, `layout-shift`, and — on React
+targets — `re-renders`), builds a
 3D Perf Map, and maintains per-repo performance memory.
 
 Read `${CLAUDE_PLUGIN_ROOT}/skills/browsergnome/SKILL.md` now and follow it.
@@ -24,6 +25,10 @@ Routing:
 - **"fix my CLS" / "content keeps jumping"** → run the `layout-shift` Autoresearch preset (SKILL.md's
   Autoresearch section, `layout-shift` subsection) — check the target's baseline shift-occurrence rate
   first, per that subsection, before committing to a full N-run loop.
+- **"too many re-renders" / "this list re-renders on every keystroke"** → run the `re-renders`
+  Autoresearch preset (SKILL.md's Autoresearch section, `re-renders` subsection) when
+  `.bgn/config.json`'s `pageTools` includes `react`; otherwise say it needs a React target and offer
+  `interaction`.
 - **"analyze my deps" / "dependency recommendations" / "what should I upgrade"** → run Dep Pulse
   standalone (SKILL.md's Dep Pulse section, `references/dep-pulse.md`'s "Standalone" section) — inline
   in this agent, no subagent dispatch, never routed through Senior Engineer Audit or a Perf Map scan.

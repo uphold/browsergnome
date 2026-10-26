@@ -33,3 +33,7 @@ Framework-agnostic measurement, same as `next-app-router`. `getServerSideProps` 
 work on every request is the most common Pages-Router-specific TTFB regression — cheap to spot by
 reading the function, not something a static detector can see (no AST signal distinguishes "slow
 DB query" from "fast one").
+
+## Page Tools dev server
+
+Start for a Page Tools pass (`references/page-tools.md`) with `npm run dev -- -p <port>` (`next dev`; `--webpack` selects webpack from Next.js 16, where Turbopack is the dev default). Webpack source paths (`webpack-internal:///./pages/…`) map to repo paths via `normalizeSource`; under Turbopack components are located by name with `page_tools.mjs locate`.

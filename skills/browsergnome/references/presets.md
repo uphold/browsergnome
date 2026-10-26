@@ -1,7 +1,8 @@
 # Presets
 
-The four v1 Autoresearch presets. Read the matching entry before running one. All four — `first-load`,
-`bundle-size`, `interaction`, and `layout-shift` — are built.
+The five Autoresearch presets. Read the matching entry before running one. All five — `first-load`,
+`bundle-size`, `interaction`, `layout-shift`, and `re-renders` — are built. `re-renders` requires the
+React Page Tools provider (`references/page-tools.md`); the other four run on any web target.
 
 Every browser-driven Drive sequence below ends with `close_page` — that's not optional cleanup, see
 `references/measurement.md`'s "Browser instance hygiene" section for why an N-run loop that skips it
@@ -205,7 +206,75 @@ higher baseline INP and different noise. Full numbers and methodology:
 `performance_analyze_insight`'s `INPBreakdown` insight's dominant subpart (input delay vs
 processing time vs presentation delay).
 
+**Blame (React provider — runs before proposing a fix):** when `config.pageTools` includes `react`,
+run a Page Tools pass (`references/page-tools.md`) on the same route and drive the **same trusted
+interaction** inside a React profile:
+```
+react_start_profiling { traceName: "blame" }
+  → click / type_text  (the identical interaction the gate drives)
+  → react_stop_profiling
+  → react_get_trace_overview { traceName: "blame" }      → the commit with max renderDuration
+  → react_get_commit_report { traceName, commitIndex }   → top 5 non-host components by selfDuration
+  → react_get_component_source + page_tools.mjs locate   → file:line in the original source
+```
+The ranked blame list (component, self ms, render count in the trace, `file:line`) is what the fix
+proposal targets. Dev-build durations rank components only. KEEP/REVERT stays on the production
+build's INP above. When the blame list is dominated by many commits or wide re-renders rather than
+one expensive component, the fix is a `re-renders` candidate: gate it there as well.
+
 **Candidate fixes** (from the knowledge base, not exhaustive): break up a long synchronous handler
 with `requestIdleCallback`/`useTransition`, debounce or defer non-critical work triggered by the
 interaction, remove unnecessary work from the event handler's critical path. One atomic fix per
 iteration — never stack.
+
+## re-renders — built (React provider)
+
+**Trigger:** "too many re-renders", "this list re-renders on every keystroke", a render-cost Senior
+Audit finding (referential instability, nested component definitions, render cascades,
+over-memoization), or an `interaction` blame list dominated by repeated commits.
+
+**Requires:** `react` in `config.pageTools`. Without it this preset is unavailable; say so, and fall
+back to `interaction` for a timing-visible symptom.
+
+**Metric:** total components rendered for one fixed interaction (lower is better). This is
+Σ `componentsChanged` across every commit in a `react_get_trace_overview`, computed by `page_tools.mjs`'s
+`renderTotal()`. It counts host components too, and includes StrictMode's development behavior. Both
+sides share both, so they cancel. Reported alongside, never gated: commit count and the top
+components by render count.
+
+**Build:** the target's **dev server**, the one preset that doesn't measure the production build.
+Which components render for an interaction is decided by the component tree and state flow, not by
+build optimizations, and only a dev build reports it. See `measurement.md`'s
+"Observed noise — `re-renders`".
+
+**Drive, each capture** (inside a Page Tools pass, `references/page-tools.md` steps 1–6):
+```
+navigate_page { type: "url", url: <target route>, initScript: <loader> }   (fresh load per capture)
+  → take_snapshot → wait_for the target element
+  → react_start_profiling { traceName: "rr-<side>-<n>" }
+  → the fixed interaction script: click / type_text with identical inputs every capture
+  → react_stop_profiling
+  → react_get_trace_overview { traceName } → renderTotal()
+```
+Use trusted input tools only (`click`, `type_text`, `press_key`), never `evaluate_script`. Same rule
+and reason as `interaction`.
+
+**Gate — two shapes, decided by a determinism check:** capture the baseline **3 times**.
+- **All 3 identical → deterministic shape.** One capture per side from then on. `stats.mjs` with
+  `minEffect: 0` (`k·pooledStdDev` is 0 and the rule is strict `>`, so a reduction of even one
+  component keeps; equal or higher reverts). Ledger
+  `mode: n/a (deterministic count)`. Same reasoning as `bundle-size`.
+- **Not identical → noisy shape.** Data fetches, timers, or animation frames landing inside the
+  capture window make the count vary. Run the N-run interleaved protocol (`config.runs`, ABABAB) and
+  gate with `stats.mjs` `minEffect: 0`, `k: config.k`, same as `first-load`. Record the spread in the
+  ledger.
+
+**Guide:** `references/architectural-perf-catalog.md` entries 2, 5, 6, 9 and 10 (context shape,
+referential instability, nested component definitions, over-memoization, render cascades). Match the
+entry to the dominant cause in the commit report.
+
+**Candidate fixes** (not exhaustive): stabilize a prop or context value (`useMemo`/`useCallback`, or
+hoist it), move state down to the component that uses it, split a context so consumers subscribe to
+less, hoist a component defined inside another component's body, `memo` a pure child that receives
+stable props, drop a `memo`/`useMemo` whose inputs change every render. One atomic fix per
+iteration — never stack. Teardown (page-tools step 9) after the last capture, every time.

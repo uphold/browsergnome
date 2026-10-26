@@ -121,6 +121,7 @@ node "$BG/skills/browsergnome/scripts/build_perf_map.mjs" graph.json --out perf-
 /browsergnome my JS bundle is too big             # → bundle-size preset
 /browsergnome the UI feels laggy when I click X   # → interaction preset
 /browsergnome content keeps jumping               # → layout-shift preset
+/browsergnome this list re-renders on every key   # → re-renders preset (React)
 ```
 
 A natural-language perf complaint routes straight to the matching preset — no need to memorize
@@ -143,6 +144,15 @@ on KEEP or reverted on REVERT — no human babysitting the loop between iteratio
 | `bundle-size` | bundle bytes | `minEffect: 1024B` | Build-time only, no browser — deterministic builds, no run-to-run noise to characterize |
 | `interaction` | INP | `minEffect: 10ms` · `k: 2` | Driven by a real trusted click, not a synthetic event |
 | `layout-shift` | CLS | zero-inflation gate | Compares shift-occurrence rate rather than a continuous noise band |
+| `re-renders` | components rendered per interaction | `minEffect: 0` | React targets; deterministic count on the dev server (zero spread on Vite and Next.js), N-run fallback when it isn't |
+
+**Page Tools** gives the agent React's own view of the app — component tree, props, hooks, source
+locations, commit-level render timing — through chrome-devtools-mcp's third-party developer tools and
+[`react-devtools-cdt-mcp`](https://react.dev/reference/dev-tools/react-devtools-cdt-mcp), injected into
+the dev server's page with no change to the target repo. It powers INP blame (which components made an
+interaction slow, with `file:line`), the `re-renders` gate, measured render evidence for Senior Engineer
+Audit findings, and a render overlay on the Perf Map. The dev server it starts is always torn down
+afterwards.
 
 `/what-if` (a separate command) answers "is this worth doing at all?" — the same
 measure→apply→re-measure→gate loop, but always reverts and writes a decision memo instead of a commit.
@@ -191,7 +201,9 @@ trusting the gate on CI hardware.
 
 - **Node ≥ 18, ESM throughout.**
 - **Measurement is delegated** to [`chrome-devtools-mcp`](https://github.com/ChromeDevTools/chrome-devtools-mcp)
-  (pinned in `.mcp.json`) — never called via `@latest`.
+  (pinned in `.mcp.json`, launched with `--categoryExperimentalThirdParty`) — never called via `@latest`.
+- **Page Tools** (React targets) uses the pinned `react-devtools-cdt-mcp` dependency, installed by the
+  SessionStart hook, and the target's `dev` script.
 - **Clean git tree required** — git is the experiment log; auto-revert needs a clean baseline before
   a run starts.
 - The LCP Attribution Map needs a captured performance trace (`performance_start_trace` /
@@ -208,11 +220,11 @@ hooks/               SessionStart (npm install) + perf-memory nudge
 skills/browsergnome/
   SKILL.md            the orchestrator — menu, presets, loop, gate, config, memory
   references/         tools.md, presets.md, measurement.md, perf-map.md, knowledge base,
-                       senior-audit.md, architectural-perf-catalog.md, what-if.md,
+                       senior-audit.md, architectural-perf-catalog.md, what-if.md, page-tools.md,
                        three-axis stack catalogs (frameworks/ bundlers/ hosts/)
   scripts/            perf_scan.mjs, build_perf_map.mjs, lcp_attribution.mjs, build_lcp_map.mjs,
                        bundle_stats.mjs, trace_metrics.mjs, stats.mjs, doctor.mjs, build_playbook.mjs,
-                       build_run_report.mjs
+                       build_run_report.mjs, page_tools.mjs
   assets/             vendored 3d-force-graph, HTML templates, real trace/bundle-stats fixtures,
                        seeded playbook priors
 templates/ci/         CI Autopilot workflow templates (build-only + browser)

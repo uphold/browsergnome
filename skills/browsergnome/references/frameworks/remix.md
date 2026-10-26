@@ -40,3 +40,7 @@ applies (`bundle-size` isn't usable without an added stats-emitting dependency).
 Framework-agnostic measurement. `LCPBreakdown`'s TTFB phase routes straight to loader performance
 here — there's no ambiguity between "server component render" and "loader fetch" the way there can
 be on `next-app-router`, since Remix has exactly one server-side data phase per route.
+
+## Page Tools dev server
+
+Start for a Page Tools pass (`references/page-tools.md`) with the Vite-based dev server on an explicit port: `remix vite:dev --port <port>`, or `react-router dev --port <port>` after the React Router v7 merge. Source paths arrive as dev-server URLs (`http://localhost:<port>/app/…`), which `normalizeSource` maps to repo paths.

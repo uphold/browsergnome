@@ -41,3 +41,7 @@ request count rather than anything a real fix could move. Not independently meas
 stack — see `references/frameworks/vite-spa.md` and `references/measurement.md` for the numbers this
 is based on (measured on a Vite SPA, not TanStack Start specifically) — but the mechanism is the same
 Vite dev server underneath, so treat it as the same requirement until proven otherwise.
+
+## Page Tools dev server
+
+Start for a Page Tools pass (`references/page-tools.md`) with the Vite dev server on an explicit port: `npm run dev -- --port <port>`. Source paths arrive as dev-server URLs, which `normalizeSource` maps to repo paths.
