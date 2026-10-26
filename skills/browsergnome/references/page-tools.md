@@ -14,8 +14,10 @@ framework-neutral; each framework is a provider entry in `scripts/page_tools.mjs
 |---|---|---|---|
 | `react` | `react-devtools-cdt-mcp` | `react-dom` | `react` — 12 `react_*` tools, see `tools.md` |
 
-Doctor detects providers and writes them to `.bgn/config.json`'s `pageTools` (`[]` disables every
-Page Tools feature).
+Doctor detects providers from the root `package.json` and, in a monorepo, workspace packages one
+and two levels down (`apps/web`), and writes them to `.bgn/config.json`'s `pageTools` (`[]` disables
+every Page Tools feature). It never overwrites an existing `pageTools`; when detection disagrees with
+it, doctor prints a warning.
 
 ## What uses it
 
@@ -54,6 +56,8 @@ All paths below are relative to `$BG/skills/browsergnome/scripts/`.
    `initScript` applies to one navigation; a reload without it loses the tools.
 6. **Discover.** `list_3p_developer_tools`. No `react` group means the pass is unavailable. Report the
    cause and fall back to the feature's non-Page-Tools behavior:
+   - a `[browsergnome] page tools: … failed (HTTP N)` console warning (`list_console_messages`): the
+     script server is down (`HTTP 0`) or the loader has the wrong port
    - a Content-Security-Policy on the dev server blocking `eval` or the request to `127.0.0.1`
    - a production build being served
    - a stale page that predates step 5 (`select_page` the injected one)
@@ -64,16 +68,16 @@ All paths below are relative to `$BG/skills/browsergnome/scripts/`.
    component that has since unmounted; its source lookup then returns nothing, so skip it.
 8. **Locate source.** Map each component to the target repo's original source:
    1. `react_get_component_source { uid }` → `source.fileName`.
-   2. `page_tools.mjs`'s `normalizeSource(fileName, repoRoot)` turns dev-server URLs, Vite
-      `/@fs/`, `webpack-internal:///`, Turbopack `[project]/`, and `file://` forms into a repo-relative
-      path, or `null`.
-   3. `node page_tools.mjs locate --repo <target> --name <Component> [--file <path from (2)>]` returns
-      `[{file, line}]` for the component's definition in the original source.
+   2. `node page_tools.mjs locate --repo <target> --name <Component> --file <fileName>` returns
+      `[{file, line}]` for the component's definition in the original source. `--file` takes the raw
+      `fileName`: `normalizeSource()` turns dev-server URLs, Vite `/@fs/`, `webpack-internal:///`,
+      Turbopack `[project]/`, and `file://` forms into a repo-relative path, or `null`.
 
    Always take the line from `locate`. The provider's `line` points into the dev server's transformed
    output, and under Turbopack `fileName` is a bundled chunk URL that `normalizeSource` maps to `null`.
-   In that case `locate` without `--file` searches the repo by name. More than one hit is reported as
-   candidates, never silently picked.
+   When the normalized path is `null`, missing on disk (a Vite `base` or `root` remaps URL paths), or
+   doesn't define the component, `locate` searches the whole repo by name. More than one hit is
+   reported as candidates, never silently picked.
 9. **Teardown — always, including on error or abort.**
    1. Kill the dev server's process group (`kill -TERM -<pgid>`) and the script server pid.
    2. Confirm both ports are free: `lsof -nP -iTCP:<port> -sTCP:LISTEN` prints nothing.

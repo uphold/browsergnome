@@ -237,8 +237,8 @@ over-memoization), or an `interaction` blame list dominated by repeated commits.
 back to `interaction` for a timing-visible symptom.
 
 **Metric:** total components rendered for one fixed interaction (lower is better). This is
-Σ `componentsChanged` across every commit in a `react_get_trace_overview`, computed by `page_tools.mjs`'s
-`renderTotal()`. It counts host components too, and includes StrictMode's development behavior. Both
+Σ `componentsChanged` across every commit in a `react_get_trace_overview`, computed by
+`node page_tools.mjs total < overview.json` (`renderTotal()`, which fails on an unexpected shape). It counts host components too, and includes StrictMode's development behavior. Both
 sides share both, so they cancel. Reported alongside, never gated: commit count and the top
 components by render count.
 
@@ -254,16 +254,18 @@ navigate_page { type: "url", url: <target route>, initScript: <loader> }   (fres
   → react_start_profiling { traceName: "rr-<side>-<n>" }
   → the fixed interaction script: click / type_text with identical inputs every capture
   → react_stop_profiling
-  → react_get_trace_overview { traceName } → renderTotal()
+  → react_get_trace_overview { traceName } → save the result as overview.json → page_tools.mjs total < overview.json
 ```
 Use trusted input tools only (`click`, `type_text`, `press_key`), never `evaluate_script`. Same rule
 and reason as `interaction`.
 
 **Gate — two shapes, decided by a determinism check:** capture the baseline **3 times**.
-- **All 3 identical → deterministic shape.** One capture per side from then on. `stats.mjs` with
-  `minEffect: 0` (`k·pooledStdDev` is 0 and the rule is strict `>`, so a reduction of even one
-  component keeps; equal or higher reverts). Ledger
-  `mode: n/a (deterministic count)`. Same reasoning as `bundle-size`.
+- **All 3 identical → deterministic shape.** Capture the candidate 3 times too. All 3 identical →
+  gate one value per side with `stats.mjs` `minEffect: 0` (`k·pooledStdDev` is 0 and the rule is
+  strict `>`, so a reduction of even one component keeps; equal or higher reverts). Ledger
+  `mode: n/a (deterministic count)`. Same reasoning as `bundle-size`. Candidate captures that differ
+  mean the fix itself added variance (a timer or effect firing inside the capture window): gate that
+  iteration on the noisy shape below instead.
 - **Not identical → noisy shape.** Data fetches, timers, or animation frames landing inside the
   capture window make the count vary. Run the N-run interleaved protocol (`config.runs`, ABABAB) and
   gate with `stats.mjs` `minEffect: 0`, `k: config.k`, same as `first-load`. Record the spread in the

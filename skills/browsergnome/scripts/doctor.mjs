@@ -29,7 +29,7 @@ import process from 'node:process';
 import { execSync, execFileSync } from 'node:child_process';
 import os from 'node:os';
 import { pathToFileURL } from 'node:url';
-import { detectProviders, PROVIDERS } from './page_tools.mjs';
+import { detectProviders, PROVIDERS, pluginRoot } from './page_tools.mjs';
 
 // ── Pure detection functions (exported; no I/O — all inputs are strings/booleans) ─
 
@@ -218,6 +218,7 @@ const GITIGNORE_CONTENT = `# browsergnome — generated run artifacts (not commi
 report.html
 run-state.json
 dep-pulse.json
+render-profile.json
 `;
 
 function bootstrap(axes) {
@@ -246,7 +247,7 @@ function bootstrap(axes) {
   }
 
   console.log(`  bootstrapped ${path.relative(repo, dir) || '.bgn'}/ (perf-memory.md, config.json, ledger/, archive/, audit/, what-if/)`);
-  console.log(`  .bgn/.gitignore created — report.html, run-state.json, and dep-pulse.json are gitignored`);
+  console.log(`  .bgn/.gitignore created — report.html, run-state.json, dep-pulse.json, and render-profile.json are gitignored`);
 }
 
 // ── Self-test (CI contract — short-circuits before main() I/O) ────────────────
@@ -331,6 +332,7 @@ function selfTest() {
     check('DEFAULT_CONFIG.pageTools carries the detected providers', DEFAULT_CONFIG({ pageTools: ['react'] }).pageTools, ['react']);
     check('GITIGNORE_CONTENT covers dep-pulse.json (bootstrap() backfills this on old repos)',
       GITIGNORE_CONTENT.includes('dep-pulse.json'), true);
+    check('GITIGNORE_CONTENT covers render-profile.json', GITIGNORE_CONTENT.includes('render-profile.json'), true);
   }
 
   // backfillConfig — fills missing top-level keys, never overwrites present ones
@@ -389,8 +391,24 @@ function gatherAxes() {
     hasDockerfile: exists(path.join(repo, 'Dockerfile')),
     hasServerJs: exists(path.join(repo, 'server.js')),
   });
-  const pageTools = detectProviders(read(path.join(repo, 'package.json')));
+  const pageTools = detectProviders(packageJsonTexts());
   return { framework: framework.framework, bundler: bundler.bundler, host: host.host, pageTools, sources: { framework: framework.source, bundler: bundler.source, host: host.source } };
+}
+
+// Root package.json, plus — when the root declares workspaces — every package.json one and two levels
+// down (apps/web, packages/ui). ponytail: a fixed-depth scan, not workspace-glob resolution; resolve
+// the globs if a workspace layout ever nests deeper.
+function packageJsonTexts() {
+  const root = read(path.join(repo, 'package.json'));
+  let workspaces = exists(path.join(repo, 'pnpm-workspace.yaml'));
+  try { workspaces ||= Boolean(JSON.parse(root).workspaces); } catch {}
+  if (!workspaces) return [root];
+  const subdirs = (d) => {
+    try { return fs.readdirSync(d, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name !== 'node_modules' && !e.name.startsWith('.')).map((e) => path.join(d, e.name)); }
+    catch { return []; }
+  };
+  const level1 = subdirs(repo);
+  return [root, ...[...level1, ...level1.flatMap(subdirs)].map((d) => read(path.join(d, 'package.json')))];
 }
 
 function printPageTools(axes, mcpJsonText) {
@@ -398,7 +416,6 @@ function printPageTools(axes, mcpJsonText) {
     console.log(`  ${warn} page tools: none (no provider trigger dependency) — React-only features (INP blame, re-renders, render overlay) unavailable`);
     return;
   }
-  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../..');
   const missing = axes.pageTools.filter((id) => !exists(path.join(pluginRoot, 'node_modules', PROVIDERS[id].pkg, PROVIDERS[id].script)));
   const devScript = (() => { try { return JSON.parse(read(path.join(repo, 'package.json'))).scripts?.dev ?? null; } catch { return null; } })();
   const flag = checkThirdPartyFlag(mcpJsonText);
@@ -418,12 +435,8 @@ function main() {
   console.log(`  ${ok(parseInt(node, 10) >= 18)} node ${node} (>=18 required)`);
 
   // ── chrome-devtools-mcp pin consistency ─────────────────────────────────
-  const mcpJsonPath = process.env.CLAUDE_PLUGIN_ROOT
-    ? path.join(process.env.CLAUDE_PLUGIN_ROOT, '.mcp.json')
-    : path.join(path.dirname(new URL(import.meta.url).pathname), '../../../.mcp.json');
-  const toolsMdPath = process.env.CLAUDE_PLUGIN_ROOT
-    ? path.join(process.env.CLAUDE_PLUGIN_ROOT, 'skills/browsergnome/references/tools.md')
-    : path.join(path.dirname(new URL(import.meta.url).pathname), '../references/tools.md');
+  const mcpJsonPath = path.join(pluginRoot, '.mcp.json');
+  const toolsMdPath = path.join(pluginRoot, 'skills/browsergnome/references/tools.md');
   const pin = checkVersionPin(read(mcpJsonPath), read(toolsMdPath));
   if (pin.mcpPin == null) {
     console.log(`  ${warn} could not find a pinned chrome-devtools-mcp version in .mcp.json`);
@@ -514,6 +527,10 @@ function main() {
           console.log(`  ${ok(true)} .bgn/config.json backfilled with new defaults: ${added.join(', ')}`);
         } else {
           console.log(`  ${ok(true)} .bgn/config.json present`);
+        }
+        // pageTools is user-editable ([] disables), so a detection change is reported, never written
+        if (!added.includes('pageTools') && JSON.stringify(config.pageTools) !== JSON.stringify(axes.pageTools)) {
+          console.log(`  ${warn} .bgn/config.json pageTools is ${JSON.stringify(config.pageTools)}, detected ${JSON.stringify(axes.pageTools)} — update it if the target's dependencies changed`);
         }
       }
     }

@@ -19,7 +19,8 @@
  * Usage:
  *   node page_tools.mjs serve --providers react [--port 0]   # first stdout line: {"port":N,"pid":P}
  *   node page_tools.mjs loader --port N [--provider react]    # prints the initScript loader
- *   node page_tools.mjs locate --repo <dir> --name <Component> [--file <rel>]  # → [{file,line}]
+ *   node page_tools.mjs locate --repo <dir> --name <Component> [--file <fileName>]  # → [{file,line}]
+ *   node page_tools.mjs total < overview.json   # re-renders gate value: renderTotal() of a trace overview
  *   node page_tools.mjs --self-test
  */
 
@@ -29,7 +30,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT
+export const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT
   || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
 // ── Providers ─────────────────────────────────────────────────────────────
@@ -42,19 +43,21 @@ export const PROVIDERS = {
 // ── Pure functions (exported, self-tested) ─────────────────────────────────
 
 /**
- * Provider ids whose trigger dependency appears in the target's package.json.
- * @param {string|null} pkgJsonText
+ * Provider ids whose trigger dependency appears in any of the target's package.json files (the root,
+ * plus workspace packages in a monorepo, where react-dom often lives only in e.g. apps/web).
+ * @param {string|null|Array<string|null>} pkgJsonTexts
  * @returns {string[]}
  */
-export function detectProviders(pkgJsonText) {
-  let pkg;
-  try { pkg = JSON.parse(pkgJsonText || ''); } catch { return []; }
-  const deps = { ...pkg?.dependencies, ...pkg?.devDependencies };
+export function detectProviders(pkgJsonTexts) {
+  const deps = {};
+  for (const text of [].concat(pkgJsonTexts)) {
+    try { const pkg = JSON.parse(text || ''); Object.assign(deps, pkg?.dependencies, pkg?.devDependencies); } catch {}
+  }
   return Object.entries(PROVIDERS).filter(([, p]) => p.trigger.some((d) => d in deps)).map(([id]) => id);
 }
 
 const TRAILING_EXPORT = /\n\s*export\s*\{[^}]*\}\s*;?\s*$/;
-const TOP_LEVEL_ESM = /^(import\s*[\w{*'"]|export\s)/m;
+const TOP_LEVEL_ESM = /^(import(\s+[\w{*]|\s*['"{*])|export[\s{])/m; // not importScripts( / import( / exports.
 
 /**
  * Strip the provider bundle's single trailing `export { … };` so it evaluates as a classic script.
@@ -72,13 +75,14 @@ export function toClassicScript(src) {
 
 /**
  * The initScript loader: synchronous XHR (it must finish before any page script runs) + indirect
- * eval (global scope, like a classic <script>).
+ * eval (global scope, like a classic <script>). A failed fetch (server down → status 0, wrong path →
+ * 404) logs a `[browsergnome]` console warning instead of throwing or failing silently.
  * @param {number} port
  * @param {string} providerId
  * @returns {string}
  */
 export function loaderScript(port, providerId = 'react') {
-  return `(function(){var x=new XMLHttpRequest();x.open('GET','http://127.0.0.1:${port}/${providerId}.js',false);x.send();if(x.status===200)(0,eval)(x.responseText)})()`;
+  return `(function(){var u='http://127.0.0.1:${port}/${providerId}.js',x=new XMLHttpRequest();try{x.open('GET',u,false);x.send()}catch(e){}if(x.status===200)(0,eval)(x.responseText);else console.warn('[browsergnome] page tools: '+u+' failed (HTTP '+x.status+') - script server down or wrong port')})()`;
 }
 
 /**
@@ -105,11 +109,18 @@ export function renderTotal(overview) {
  * @returns {string|null}
  */
 export function normalizeSource(fileName, repoRoot) {
+  try { return sourcePath(fileName, repoRoot); } catch { return null; } // malformed URL or % sequence → caller's by-name fallback
+}
+
+function sourcePath(fileName, repoRoot) {
   if (!fileName || /node_modules/.test(fileName)) return null;
   const root = repoRoot.replace(/\/+$/, '');
   const fromAbs = (abs) => (abs === root || !abs.startsWith(root + '/') ? null : abs.slice(root.length + 1));
   let p = fileName.replace(/[?#].*$/, '');
-  if (p.startsWith('webpack-internal:///')) return p.replace(/^webpack-internal:\/\/\/(\([^)]*\)\/)?\.\//, '') || null;
+  if (p.startsWith('webpack-internal:///')) {
+    const rel = p.replace(/^webpack-internal:\/\/\/(\([^)]*\)\/)?/, ''); // `../x` escapes webpack's context (base unknown) → null
+    return rel.startsWith('./') && rel.length > 2 ? rel.slice(2) : null;
+  }
   if (p.startsWith('[project]/')) return p.slice('[project]/'.length) || null;
   if (p.startsWith('file://')) return fromAbs(decodeURIComponent(new URL(p).pathname));
   if (/^https?:\/\//.test(p)) {
@@ -123,7 +134,8 @@ export function normalizeSource(fileName, repoRoot) {
 }
 
 const DEFINITION = (name) => new RegExp(
-  `^\\s*(export\\s+(default\\s+)?)?((async\\s+)?function\\s*\\*?\\s+${name}\\b|(const|let|var)\\s+${name}\\s*[=:]|class\\s+${name}\\b)`);
+  `^\\s*(export\\s+(default\\s+)?)?((async\\s+)?function\\s*\\*?\\s+${name}\\b|(const|let|var)\\s+${name}\\s*[=:]|class\\s+${name}\\b)`
+  + `|\\b(memo|forwardRef)\\s*\\(\\s*(async\\s+)?function\\s*\\*?\\s+${name}\\b`); // `export default memo(function Card() {…})`
 
 /**
  * 1-based line where component `name` is defined in `fileText`, or null. Provider `line` values point
@@ -141,23 +153,43 @@ export function locateComponent(fileText, name) {
 }
 
 /**
- * Perf Map overlay: copy render counts onto graph.json nodes. A node matches when its id (perf_scan's
- * path relative to the scanned root) equals the profile entry's file, or is its path suffix (scan
- * rooted at a subdirectory like src/).
+ * Perf Map overlay: copy render counts onto graph.json nodes. Node ids are perf_scan paths relative
+ * to the scanned root; profile files are repo-relative. One scan-root prefix (`''`, or e.g. `src/`
+ * for a scan rooted at a subdirectory) holds for the whole graph: each entry votes for the prefix its
+ * longest matching id implies, the majority wins (ties → the shorter prefix), and an entry matches
+ * only as `prefix + id`. So `src/features/App.tsx` never lands on a root `App.tsx`. Entries for the
+ * same file sum. Throws on a non-array profile, a missing `file`, or a non-numeric `renders`/`selfMs`
+ * (the profile is agent-written — fail, don't render NaN).
  * @param {{nodes:Array<{id:string}>}} graph
  * @param {Array<{file:string, renders:number, selfMs:number}>} profile
  * @returns {{graph:object, unmatched:string[]}}
  */
 export function mergeRenders(graph, profile) {
-  const unmatched = [];
+  if (!Array.isArray(profile)) throw new Error('render profile is not an array');
+  const entries = profile.map((e, i) => {
+    if (typeof e?.file !== 'string' || !e.file) throw new Error(`render profile entry ${i}: file must be a non-empty string`);
+    const renders = Number(e.renders), selfMs = Number(e.selfMs);
+    if (!Number.isFinite(renders) || !Number.isFinite(selfMs)) throw new Error(`render profile entry ${i} (${e.file}): renders and selfMs must be numbers`);
+    return { file: e.file, renders, selfMs };
+  });
   const nodes = graph.nodes.map((n) => ({ ...n }));
-  for (const e of profile) {
-    const node = nodes.find((n) => n.id === e.file) || nodes.find((n) => e.file.endsWith('/' + n.id));
-    if (!node) { unmatched.push(e.file); continue; }
-    node.renders = Number(e.renders);
-    node.renderSelfMs = Number(e.selfMs);
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const prefixOf = (file) => {
+    const parts = file.split('/');
+    const i = parts.findIndex((_, i) => byId.has(parts.slice(i).join('/'))); // first hit = longest id
+    return i < 0 ? null : parts.slice(0, i).map((d) => d + '/').join('');
+  };
+  const votes = {};
+  for (const e of entries) { const p = prefixOf(e.file); if (p !== null) votes[p] = (votes[p] || 0) + 1; }
+  const [prefix = ''] = Object.keys(votes).sort((a, b) => votes[b] - votes[a] || a.length - b.length);
+  const unmatched = new Set();
+  for (const e of entries) {
+    const node = e.file.startsWith(prefix) && byId.get(e.file.slice(prefix.length));
+    if (!node) { unmatched.add(e.file); continue; }
+    node.renders = (node.renders ?? 0) + e.renders; // nodes are fresh copies; graph.json carries no renders
+    node.renderSelfMs = (node.renderSelfMs ?? 0) + e.selfMs;
   }
-  return { graph: { ...graph, nodes }, unmatched };
+  return { graph: { ...graph, nodes }, unmatched: [...unmatched] };
 }
 
 // ── CLI ──────────────────────────────────────────────────────────────────
@@ -177,18 +209,22 @@ function* sourceFiles(dir) {
   }
 }
 
+// --file takes the provider's raw source.fileName (or a repo-relative path) and normalizes it. A path
+// that's null, missing on disk (e.g. a Vite `base`/`root` remap), or lacks the definition falls back
+// to a by-name search of the whole repo.
 function locate() {
   const repoDir = path.resolve(arg('--repo', '.'));
   const name = arg('--name');
   const file = arg('--file');
-  if (!name) { console.error('usage: node page_tools.mjs locate --repo <dir> --name <Component> [--file <rel>]'); process.exit(1); }
-  const candidates = file ? [path.join(repoDir, file)] : sourceFiles(repoDir);
-  const hits = [];
-  for (const abs of candidates) {
-    const line = fs.existsSync(abs) ? locateComponent(fs.readFileSync(abs, 'utf8'), name) : null;
-    if (line) hits.push({ file: path.relative(repoDir, abs), line });
-  }
-  console.log(JSON.stringify(hits));
+  if (!name) { console.error('usage: node page_tools.mjs locate --repo <dir> --name <Component> [--file <fileName>]'); process.exit(1); }
+  const find = (files) => [...files].flatMap((abs) => {
+    const line = locateComponent(fs.readFileSync(abs, 'utf8'), name);
+    return line ? [{ file: path.relative(repoDir, abs), line }] : [];
+  });
+  const rel = file && (normalizeSource(file, repoDir) ?? file);
+  const abs = rel && path.join(repoDir, rel);
+  const hits = abs && fs.existsSync(abs) && fs.statSync(abs).isFile() ? find([abs]) : [];
+  console.log(JSON.stringify(hits.length ? hits : find(sourceFiles(repoDir))));
 }
 
 function serve() {
@@ -210,7 +246,10 @@ function serve() {
   server.listen(Number(arg('--port', '0')), '127.0.0.1', () => {
     console.log(JSON.stringify({ port: server.address().port, pid: process.pid }));
   });
-  for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => server.close(() => process.exit(0)));
+  for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => {
+    server.closeAllConnections?.(); // Node ≥ 18.2. Chrome holds keep-alive sockets; close() alone waits them out
+    server.close(() => process.exit(0));
+  });
 }
 
 function selfTest() {
@@ -228,6 +267,7 @@ function selfTest() {
   check('react alone (no react-dom, e.g. RN) → none', detectProviders('{"dependencies":{"react":"19"}}'), []);
   check('vue app → none', detectProviders('{"dependencies":{"vue":"3"}}'), []);
   check('invalid / missing package.json → none', [detectProviders('{'), detectProviders(null)], [[], []]);
+  check('react-dom only in a workspace package → react', detectProviders(['{"workspaces":["apps/*"]}', null, '{"dependencies":{"react-dom":"19"}}']), ['react']);
 
   // toClassicScript — shape of the real dist/register.js tail
   const bundle = "var x = 1;\nfunction register() {}\nregister();\n\nexport { buildToolGroup, register };\n";
@@ -236,10 +276,17 @@ function selfTest() {
   check('rejects a top-level import', throws(() => toClassicScript("import x from 'y';\n" + bundle)), true);
   check('rejects a second export', throws(() => toClassicScript('export const a = 1;\n' + bundle)), true);
   check('ignores "import"/"export" inside indented code and identifiers', throws(() => toClassicScript("  importScripts();\nvar exportsX = 1;\n" + bundle)), false);
+  check('ignores column-0 identifiers starting with import/export', throws(() => toClassicScript("importScripts();\nimportantFlag = 1;\nexports.x = 1;\nimport('./lazy.js');\n" + bundle)), false);
+  check('rejects import{…}/import"…"/export{…} without spaces', ['import{a}from"b";\n', 'import"side";\n', 'export{a};\nvar b;\n'].map((h) => throws(() => toClassicScript(h + bundle))), [true, true, true]);
 
   // loaderScript
   const l = loaderScript(5299, 'react');
-  check('loader targets 127.0.0.1:<port>/<id>.js synchronously', [l.includes("'http://127.0.0.1:5299/react.js',false"), l.includes('(0,eval)')], [true, true]);
+  check('loader targets 127.0.0.1:<port>/<id>.js synchronously', [l.includes("'http://127.0.0.1:5299/react.js'"), l.includes("open('GET',u,false)"), l.includes('(0,eval)')], [true, true, true]);
+  const runLoader = (xhr) => { const warns = []; let evaled = null;
+    new Function('XMLHttpRequest', 'console', 'eval', l)(function () { return xhr; }, { warn: (m) => warns.push(m) }, (src) => { evaled = src; });
+    return [evaled, warns.length]; };
+  check('loader warns (no throw) when the server is down', runLoader({ status: 0, open() {}, send() { throw new Error('NetworkError'); } }), [null, 1]);
+  check('loader warns on a 404', runLoader({ status: 404, open() {}, send() {} }), [null, 1]);
   check('loader is a single line', l.includes('\n'), false);
 
   // renderTotal — the spike's overview shape (3 commits × 50 components)
@@ -263,6 +310,8 @@ function selfTest() {
   check('absolute path inside repo', normalizeSource('/work/app/src/A.tsx', root), 'src/A.tsx');
   check('node_modules → null', normalizeSource('http://localhost:5199/node_modules/.vite/deps/react.js', root), null);
   check('empty → null', normalizeSource('', root), null);
+  check('webpack-internal outside the context (../) → null', normalizeSource('webpack-internal:///../shared/x.tsx', root), null);
+  check('malformed % sequence → null, no throw', [normalizeSource('http://localhost:5199/src/100%/Card.tsx', root), normalizeSource('file:///work/app/100%/A.tsx', root)], [null, null]);
 
   // locateComponent
   const src = "import x from 'y';\nfunction Row({ label }) { return null; }\nexport default function Filter() {}\nconst Card = memo(() => null);\nexport const List: FC = () => null;\nclass Old extends Component {}\nconst RowLike = 1;\n";
@@ -273,20 +322,35 @@ function selfTest() {
   check('class component', locateComponent(src, 'Old'), 6);
   check('no prefix match (Row ≠ RowLike)', locateComponent('const RowLike = 1;', 'Row'), null);
   check('absent → null', locateComponent(src, 'Missing'), null);
+  check('memo(function X) / React.forwardRef(function X)', [locateComponent('export default memo(function Card() {});', 'Card'), locateComponent('x\nconst I = React.forwardRef(function Input(p, ref) {});', 'Input')], [1, 2]);
   check('non-identifier name (e.g. "Unknown()") → null', locateComponent(src, 'Anonymous()'), null);
 
   // mergeRenders
-  const graph = { meta: {}, nodes: [{ id: 'src/App.jsx' }, { id: 'components/Row.tsx' }, { id: 'src/util.js' }] };
+  const graph = { meta: {}, nodes: [{ id: 'src/App.jsx' }, { id: 'src/components/Row.tsx' }, { id: 'src/util.js' }] };
   const merged = mergeRenders(graph, [
     { file: 'src/App.jsx', renders: 3, selfMs: 1.1 },
     { file: 'src/components/Row.tsx', renders: 40, selfMs: 6.2 },
     { file: 'src/Gone.tsx', renders: 1, selfMs: 0.1 },
   ]);
   check('exact id match', [merged.graph.nodes[0].renders, merged.graph.nodes[0].renderSelfMs], [3, 1.1]);
-  check('suffix match (scan rooted at src/)', merged.graph.nodes[1].renders, 40);
+  check('nested exact match (scan rooted at the repo)', merged.graph.nodes[1].renders, 40);
   check('unprofiled node untouched', 'renders' in merged.graph.nodes[2], false);
   check('unmatched reported', merged.unmatched, ['src/Gone.tsx']);
   check('input graph not mutated', 'renders' in graph.nodes[0], false);
+  // scan rooted at src/: ids are scan-relative, profile files repo-relative
+  const sub = { nodes: [{ id: 'index.tsx' }, { id: 'App.tsx' }, { id: 'components/Row/index.tsx' }] };
+  const s = mergeRenders(sub, [
+    { file: 'src/components/Row/index.tsx', renders: 40, selfMs: 6 },
+    { file: 'src/index.tsx', renders: 1, selfMs: 0.5 },
+    { file: 'src/features/App.tsx', renders: 2, selfMs: 1 },
+  ]);
+  check('longest suffix wins over a short root id', [s.graph.nodes[2].renders, s.graph.nodes[0].renders], [40, 1]);
+  check('file absent from graph is reported, not attached to a same-named root file', [s.unmatched, 'renders' in s.graph.nodes[1]], [['src/features/App.tsx'], false]);
+  check('non-numeric selfMs → throws', throws(() => mergeRenders(graph, [{ file: 'src/App.jsx', renders: 1 }])), true);
+  const dup = mergeRenders(graph, [{ file: 'src/App.jsx', renders: 2, selfMs: 1 }, { file: 'src/App.jsx', renders: 5, selfMs: 3 }, { file: 'x.tsx', renders: 1, selfMs: 0 }, { file: 'x.tsx', renders: 1, selfMs: 0 }]);
+  check('same file twice sums (two components in one file); unmatched deduped', [dup.graph.nodes[0].renders, dup.graph.nodes[0].renderSelfMs, dup.unmatched], [7, 4, ['x.tsx']]);
+  const msg = (fn) => { try { fn(); } catch (e) { return e.message; } };
+  check('missing file / non-array profile → descriptive error', [msg(() => mergeRenders(graph, [{ renders: 1, selfMs: 1 }])), msg(() => mergeRenders(graph, {}))], ['render profile entry 0: file must be a non-empty string', 'render profile is not an array']);
 
   console.log(`\n  ${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
@@ -297,12 +361,13 @@ function main() {
   if (cmd === '--self-test') return selfTest();
   if (cmd === 'serve') return serve();
   if (cmd === 'locate') return locate();
+  if (cmd === 'total') return console.log(renderTotal(JSON.parse(fs.readFileSync(0, 'utf8')))); // overview JSON on stdin
   if (cmd === 'loader') {
     const port = Number(arg('--port'));
     if (!port) { console.error('usage: node page_tools.mjs loader --port N [--provider react]'); process.exit(1); }
     return console.log(loaderScript(port, arg('--provider', 'react')));
   }
-  console.error('usage: node page_tools.mjs serve --providers react [--port 0] | loader --port N [--provider react] | locate --repo <dir> --name <Component> [--file <rel>] | --self-test');
+  console.error('usage: node page_tools.mjs serve --providers react [--port 0] | loader --port N [--provider react] | locate --repo <dir> --name <Component> [--file <fileName>] | total < overview.json | --self-test');
   process.exit(1);
 }
 

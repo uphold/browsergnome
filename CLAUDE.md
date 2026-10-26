@@ -75,7 +75,8 @@ run-state.json ──build_run_report.mjs──> report.html
 .bgn/ledger/*.md + assets/playbook.seed.json ──build_playbook.mjs──> .bgn/playbook.{md,json}
 graph.json + render-profile.json ──build_perf_map.mjs --renders──> perf-map.html (render overlay)
 page_tools.mjs  serve (provider script on 127.0.0.1, CORS) · loader (navigate_page initScript) ·
-                locate (component name → file:line) — Page Tools, see references/page-tools.md
+                locate (component name → file:line) · total (re-renders gate value) — Page Tools,
+                see references/page-tools.md
 stats.mjs   gate arbiter (argv numbers in, JSON out): keep ⇔ improvement > max(minEffect, k·pooledStdDev)
 doctor.mjs  preflight: MCP pin check, stack detection, git state, `--init` bootstraps .bgn/
 ```

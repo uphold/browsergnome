@@ -29,6 +29,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
 // Babel packages are CJS — load via createRequire (same pattern as doctor.mjs)
 // so a missing install fails with one actionable line instead of a raw
@@ -40,7 +41,7 @@ try {
   const _traverse = requireLocal('@babel/traverse');
   traverse = _traverse.default || _traverse;
 } catch {
-  console.error(`[browsergnome] missing deps (@babel/parser, @babel/traverse) — run: npm install in ${path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../..')}`);
+  console.error(`[browsergnome] missing deps (@babel/parser, @babel/traverse) — run: npm install in ${path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')}`);
   process.exit(1);
 }
 

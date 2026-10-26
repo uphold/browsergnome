@@ -225,7 +225,7 @@ made-up data.
 `--init` bootstraps `.bgn/` if missing: `perf-memory.md`, `config.json` (defaults below, pre-filled with
 the detected stack axes), `ledger/`, `archive/`, `audit/` (Senior Engineer Audit reports — see below),
 `what-if/` (`/what-if` decision memos — see below), `.gitignore` (excludes
-`report.html`/`run-state.json`/`dep-pulse.json`).
+`report.html`/`run-state.json`/`dep-pulse.json`/`render-profile.json`).
 Re-running without `--init` on an already-bootstrapped repo just reports status and fills in a missing
 `config.json` if one was deleted.
 
@@ -358,13 +358,13 @@ sequence: `references/presets.md`'s `interaction` entry → **Blame**.
 ### `re-renders` — React provider, gated on a count, on the dev server
 
 The one preset that measures the target's dev server: it gates on total components rendered for one
-fixed interaction (Σ `componentsChanged`, `page_tools.mjs`'s `renderTotal()`), a structural count
+fixed interaction (Σ `componentsChanged`, `page_tools.mjs total`), a structural count
 only a dev build reports. Every capture runs inside a Page Tools pass (`references/page-tools.md`),
 and that pass's teardown always runs.
 
-**Gate:** 3 baseline captures decide the shape. Identical → deterministic, one capture per side,
-`gate()` with `minEffect: 0` (the rule is strict `>`, so any drop keeps), ledger `mode: n/a (deterministic count)`. Otherwise → N-run interleaved
-with `k`. Measured zero spread on Vite and Next.js (webpack and Turbopack) dev servers:
+**Gate:** 3 baseline captures decide the shape. Identical → deterministic: 3 candidate captures, and when they
+agree too, one value per side into `gate()` with `minEffect: 0` (the rule is strict `>`, so any drop keeps), ledger `mode: n/a (deterministic count)`. Otherwise (either side varies) → N-run
+interleaved with `k`. Measured zero spread on Vite and Next.js (webpack and Turbopack) dev servers:
 `references/measurement.md`'s "Observed noise — `re-renders`". Drive and candidate fixes:
 `references/presets.md`'s `re-renders` entry.
 
@@ -395,7 +395,7 @@ Display `.bgn/config.json`, let the user edit, write back. Bootstrapped by Docto
 | `emulate` | `{cpuThrottlingRate:1, networkConditions:null, viewport:"1280x720x1"}` | no throttle by default (DevTools/Lighthouse-adjacent numbers); same conditions across all N runs is what matters for the gate, not which conditions — set `cpuThrottlingRate`/`networkConditions` here to opt into worst-case/mobile-network sensitivity |
 | `depPulse` | `true` | does the *ambient* Dep Pulse dispatch (Autoresearch Preflight, Senior Engineer Audit) run — see `references/dep-pulse.md`. A direct dependency ask always runs Dep Pulse standalone, regardless of this flag. |
 | `depPulseAutoApply` | `true` | may a benign patch bump skip the pre-install confirm (3-condition carve-out; 2 more conditions still gate KEEP) |
-| `pageTools` | detected | Page Tools providers injected for dev-server passes — `["react"]` when the target depends on `react-dom`. `[]` disables INP blame, `re-renders`, Senior Audit render evidence, and the Perf Map render overlay. See `references/page-tools.md`. |
+| `pageTools` | detected | Page Tools providers injected for dev-server passes — `["react"]` when the target depends on `react-dom` (root `package.json`, or a workspace package's in a monorepo). `[]` disables INP blame, `re-renders`, Senior Audit render evidence, and the Perf Map render overlay. See `references/page-tools.md`. |
 
 ## Senior Engineer Audit (menu item 5 — works today)
 
@@ -522,7 +522,8 @@ memo is written, not assumed clean because the revert steps ran.
   rendered as first-class (no bundle stats).
 - `scripts/stats.mjs` — the gate arbiter (`--self-test` covers edge cases).
 - `scripts/page_tools.mjs` — Page Tools: `serve` (provider scripts on 127.0.0.1 with CORS), `loader`
-  (the `initScript`), `locate` (component name → `file:line` in the original source), plus the pure
+  (the `initScript`), `locate` (component name → `file:line` in the original source), `total` (the `re-renders` gate value
+  from a trace overview), plus the pure
   `detectProviders`/`normalizeSource`/`renderTotal`/`mergeRenders` (imported by `doctor.mjs` and
   `build_perf_map.mjs`; CLI-guarded).
 - `assets/graph.renders-sample.json` + `assets/render-profile.sample.json` — a real `perf_scan.mjs`
