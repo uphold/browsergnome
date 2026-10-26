@@ -5,7 +5,7 @@
  * Those invariants have no single source of truth by design (a version pin
  * duplicated into human-readable docs, a config key mirrored into a schema
  * table) — an edit to one side silently breaks the other. This turns the
- * four *mechanically* checkable ones into a CI failure instead of tribal
+ * *mechanically* checkable ones into a CI failure instead of tribal
  * knowledge. Run from this repo's root only (unlike doctor.mjs, which runs
  * from a target repo).
  *
@@ -24,7 +24,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import { checkVersionPin } from './doctor.mjs';
+import { checkVersionPin, checkProviderPin, checkThirdPartyFlag } from './doctor.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const read = (p) => fs.readFileSync(p, 'utf8');
@@ -48,14 +48,15 @@ export function checkCatalogNames(catalogNames, detectorValues) {
 }
 
 /**
- * depPulse / depPulseAutoApply must exist in both SKILL.md's config schema
- * table and doctor.mjs's DEFAULT_CONFIG.
+ * Mirrored config keys (depPulse / depPulseAutoApply / pageTools) must exist in both SKILL.md's
+ * config schema table and doctor.mjs's DEFAULT_CONFIG.
  * @param {string} skillMdText
  * @param {string} doctorMjsText
+ * @param {string[]} [keys]
  * @returns {{ok:boolean, missingFromSkillMd:string[], missingFromDoctor:string[]}}
  */
-export function checkDepPulseKeys(skillMdText, doctorMjsText) {
-  const keys = ['depPulse', 'depPulseAutoApply'];
+export const MIRRORED_CONFIG_KEYS = ['depPulse', 'depPulseAutoApply', 'pageTools'];
+export function checkConfigKeys(skillMdText, doctorMjsText, keys = MIRRORED_CONFIG_KEYS) {
   const missingFromSkillMd = keys.filter((k) => !new RegExp('`' + k + '`').test(skillMdText));
   const missingFromDoctor = keys.filter((k) => !new RegExp('\\b' + k + '\\s*:').test(doctorMjsText));
   return { ok: missingFromSkillMd.length === 0 && missingFromDoctor.length === 0, missingFromSkillMd, missingFromDoctor };
@@ -91,9 +92,11 @@ function selfTest() {
   check('checkCatalogNames: catches an orphan catalog file', checkCatalogNames(['vite', 'rollup'], ['vite']).orphanCatalog, ['rollup']);
   check('checkCatalogNames: catches a missing catalog file', checkCatalogNames(['vite'], ['vite', 'rspack']).missingCatalog, ['rspack']);
 
-  check('checkDepPulseKeys: both present', checkDepPulseKeys('| `depPulse` |\n| `depPulseAutoApply` |', 'depPulse: true,\ndepPulseAutoApply: true,').ok, true);
-  check('checkDepPulseKeys: catches SKILL.md drift', checkDepPulseKeys('| `depPulse` |', 'depPulse: true,\ndepPulseAutoApply: true,').missingFromSkillMd, ['depPulseAutoApply']);
-  check('checkDepPulseKeys: catches doctor.mjs drift', checkDepPulseKeys('| `depPulse` |\n| `depPulseAutoApply` |', 'depPulse: true,').missingFromDoctor, ['depPulseAutoApply']);
+  const dp = ['depPulse', 'depPulseAutoApply'];
+  check('checkConfigKeys: both present', checkConfigKeys('| `depPulse` |\n| `depPulseAutoApply` |', 'depPulse: true,\ndepPulseAutoApply: true,', dp).ok, true);
+  check('checkConfigKeys: catches SKILL.md drift', checkConfigKeys('| `depPulse` |', 'depPulse: true,\ndepPulseAutoApply: true,', dp).missingFromSkillMd, ['depPulseAutoApply']);
+  check('checkConfigKeys: catches doctor.mjs drift', checkConfigKeys('| `depPulse` |\n| `depPulseAutoApply` |', 'depPulse: true,', dp).missingFromDoctor, ['depPulseAutoApply']);
+  check('checkConfigKeys: default key list covers pageTools', checkConfigKeys('| `depPulse` | `depPulseAutoApply` |', 'depPulse: 1,\ndepPulseAutoApply: 1,').missingFromSkillMd, ['pageTools']);
 
   check('checkPerfMapCalibration: agreement (short SHA is a prefix)', checkPerfMapCalibration('EXCALIDRAW_SHA: 4872083c044491b6d5c96ae134a75464f96d6831', '`4872083c`, 527 modules').ok, true);
   check('checkPerfMapCalibration: catches drift', checkPerfMapCalibration('EXCALIDRAW_SHA: deadbeef00000000000000000000000000000000', '`4872083c`, 527 modules').ok, false);
@@ -124,6 +127,13 @@ function main() {
   report('chrome-devtools-mcp pin (.mcp.json <-> references/tools.md)', pin.agree,
     pin.agree ? `@${pin.mcpPin}` : `mcp=@${pin.mcpPin ?? '?'} docs=@${pin.docsPin ?? '?'}`);
 
+  // 1b. Page Tools: react-devtools-cdt-mcp pin + third-party category flag
+  const pkgJsonText = read(path.join(repoRoot, 'package.json'));
+  const providerPin = checkProviderPin(pkgJsonText, toolsMdText);
+  report('react-devtools-cdt-mcp pin (package.json <-> references/tools.md)', providerPin.agree,
+    providerPin.agree ? `@${providerPin.pkgPin}` : `package=@${providerPin.pkgPin ?? '?'} docs=@${providerPin.docsPin ?? '?'}`);
+  report('chrome-devtools-mcp --categoryExperimentalThirdParty (.mcp.json)', checkThirdPartyFlag(mcpJsonText));
+
   // 2. Stack-catalog filenames vs detector return strings
   const axisField = { frameworks: 'framework', bundlers: 'bundler', hosts: 'host' };
   const detectorNames = { frameworks: 'detectFramework', bundlers: 'detectBundler', hosts: 'detectHost' };
@@ -143,11 +153,11 @@ function main() {
       result.ok ? undefined : `missing catalog file for [${result.missingCatalog}], orphan catalog file(s) [${result.orphanCatalog}]`);
   }
 
-  // 3. depPulse config keys
+  // 3. Mirrored config keys
   const skillMdText = read(path.join(repoRoot, 'skills/browsergnome/SKILL.md'));
-  const depPulse = checkDepPulseKeys(skillMdText, doctorMjsText);
-  report('depPulse/depPulseAutoApply (SKILL.md <-> doctor.mjs DEFAULT_CONFIG)', depPulse.ok,
-    depPulse.ok ? undefined : `missing from SKILL.md: [${depPulse.missingFromSkillMd}], missing from doctor.mjs: [${depPulse.missingFromDoctor}]`);
+  const keys = checkConfigKeys(skillMdText, doctorMjsText);
+  report(`${MIRRORED_CONFIG_KEYS.join('/')} (SKILL.md <-> doctor.mjs DEFAULT_CONFIG)`, keys.ok,
+    keys.ok ? undefined : `missing from SKILL.md: [${keys.missingFromSkillMd}], missing from doctor.mjs: [${keys.missingFromDoctor}]`);
 
   // 4. Perf Map calibration SHA
   const pagesYmlText = read(path.join(repoRoot, '.github/workflows/pages.yml'));

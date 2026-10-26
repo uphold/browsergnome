@@ -1,0 +1,198 @@
+{
+  "meta": {
+    "generatedAt": "2026-10-26T10:16:24.558Z",
+    "repoRoot": "vite-react-app",
+    "reactCompiler": false,
+    "config": {
+      "severityWeight": {
+        "CRITICAL": 10,
+        "HIGH": 5,
+        "MEDIUM": 1.5,
+        "LOW": 0.4
+      },
+      "weightOverride": {
+        "barrelImport": 0.6
+      },
+      "centralityK": 0.25,
+      "listBonus": 0.5,
+      "diminishAfter": 3,
+      "hotspotDebt": 6,
+      "displayMinDebt": 2,
+      "sizeBaseHot": 6,
+      "sizeK": 1.3,
+      "sizeMax": 60,
+      "sizeCold": 0.8,
+      "ignoreDirs": [
+        "node_modules",
+        ".git",
+        "build",
+        "dist",
+        ".next",
+        ".turbo",
+        ".vercel",
+        "out",
+        "coverage",
+        "__snapshots__",
+        "__mocks__",
+        "vendor"
+      ],
+      "ignoreFileRe": {},
+      "exts": [
+        ".tsx",
+        ".ts",
+        ".jsx",
+        ".js",
+        ".mjs",
+        ".cjs"
+      ],
+      "heavyLibs": [
+        "moment",
+        "lodash",
+        "chart.js",
+        "three",
+        "date-fns",
+        "crypto-js",
+        "rxjs",
+        "core-js",
+        "@mui/material",
+        "@mui/icons-material"
+      ],
+      "entryFileRe": {},
+      "useClientFanInThreshold": 8,
+      "largeStaticImportBytes": 8192,
+      "virtualizationLibs": [
+        "@tanstack/react-virtual",
+        "@tanstack/virtual-core",
+        "react-window",
+        "react-virtualized"
+      ]
+    },
+    "stats": {
+      "filesScanned": 3,
+      "nodes": 3,
+      "links": 1,
+      "findings": 6,
+      "hotspots": 1,
+      "byDetector": {
+        "largeStaticImport": 1,
+        "imageNoDims": 4,
+        "inlinePropLiteral": 1
+      }
+    }
+  },
+  "nodes": [
+    {
+      "id": "vite.config.js",
+      "label": "vite.config.js",
+      "findings": [],
+      "rawDebt": 0,
+      "fanIn": 0,
+      "hasList": false,
+      "debt": 0,
+      "maxSeverity": null,
+      "parseError": false,
+      "isHotspot": false,
+      "val": 0.8,
+      "color": "#586480"
+    },
+    {
+      "id": "src/App.jsx",
+      "label": "App.jsx",
+      "findings": [
+        {
+          "id": "largeStaticImport",
+          "severity": "MEDIUM",
+          "preset": "bundle-size",
+          "guide": "bundle",
+          "title": "Large JSON/SVG asset imported into a shared module",
+          "line": 4,
+          "detail": "9kB"
+        },
+        {
+          "id": "imageNoDims",
+          "severity": "HIGH",
+          "preset": "layout-shift",
+          "guide": "images-media",
+          "title": "Image without explicit dimensions",
+          "line": 15,
+          "detail": "img"
+        },
+        {
+          "id": "imageNoDims",
+          "severity": "HIGH",
+          "preset": "layout-shift",
+          "guide": "images-media",
+          "title": "Image without explicit dimensions",
+          "line": 16,
+          "detail": "img"
+        },
+        {
+          "id": "inlinePropLiteral",
+          "severity": "LOW",
+          "preset": "interaction",
+          "guide": "inp",
+          "title": "Inline function/object literal as prop",
+          "line": 27,
+          "detail": "onClick"
+        },
+        {
+          "id": "imageNoDims",
+          "severity": "HIGH",
+          "preset": "layout-shift",
+          "guide": "images-media",
+          "title": "Image without explicit dimensions",
+          "line": 45,
+          "detail": "img"
+        },
+        {
+          "id": "imageNoDims",
+          "severity": "HIGH",
+          "preset": "layout-shift",
+          "guide": "images-media",
+          "title": "Image without explicit dimensions",
+          "line": 51,
+          "detail": "img"
+        }
+      ],
+      "rawDebt": 21.9,
+      "fanIn": 1,
+      "hasList": false,
+      "debt": 27.27,
+      "maxSeverity": "HIGH",
+      "parseError": false,
+      "isHotspot": true,
+      "val": 41.451,
+      "color": "#ff9f1c"
+    },
+    {
+      "id": "src/main.jsx",
+      "label": "main.jsx",
+      "findings": [],
+      "rawDebt": 0,
+      "fanIn": 0,
+      "hasList": false,
+      "debt": 0,
+      "maxSeverity": null,
+      "parseError": false,
+      "isHotspot": false,
+      "val": 0.8,
+      "color": "#586480"
+    }
+  ],
+  "links": [
+    {
+      "source": "src/main.jsx",
+      "target": "src/App.jsx"
+    }
+  ],
+  "top3": [
+    {
+      "rank": 1,
+      "file": "src/App.jsx",
+      "debt": 27.27,
+      "preset": "layout-shift",
+      "why": "Image without explicit dimensions (img) at src/App.jsx:15",
+      "paste": "/browsergnome layout-shift --target App"
+    }
+  ]
+}

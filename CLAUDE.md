@@ -14,9 +14,11 @@ Claude reads at runtime; the `.mjs` files are the deterministic, offline half.
   `measurement.md`, `perf-map.md`, `senior-audit.md`, `what-if.md`, `knowledge/`, and three
   stack-axis catalogs `frameworks/` `bundlers/` `hosts/`).
 - `skills/browsergnome/scripts/*.mjs` — pure, offline, self-testing tools. No framework, no runtime
-  browser dependency, no shared util module — each script is standalone except one ESM import edge
-  (`lcp_attribution.mjs` imports parser functions from `trace_metrics.mjs`/`bundle_stats.mjs`, guarded
-  by a `pathToFileURL(process.argv[1])` check so importing doesn't also fire the CLI).
+  browser dependency, no shared util module — each script is standalone except a few ESM import edges,
+  each guarded by a `pathToFileURL(process.argv[1])` check so importing doesn't also fire the CLI:
+  `lcp_attribution.mjs` imports parser functions from `trace_metrics.mjs`/`bundle_stats.mjs`;
+  `doctor.mjs` and `build_perf_map.mjs` import `detectProviders`/`mergeRenders` from `page_tools.mjs`;
+  `check_invariants.mjs` imports the pin checks from `doctor.mjs`.
 - `commands/` (`/browsergnome`, `/what-if`), `hooks/hooks.json`, `.mcp.json`,
   `.claude-plugin/{plugin,marketplace}.json` — plugin wiring.
 - `templates/ci/` — two GitHub Actions templates (build-only, browser) for running Autoresearch
@@ -33,9 +35,9 @@ No build step, no linter, no test framework.
 
 ```bash
 npm install          # @babel/parser + @babel/traverse, needed only by perf_scan.mjs
-npm test             # the six self-tests, chained
+npm test             # every self-test plus the invariants check, chained
 npm run stats:test   # a single self-test (also: playbook:test doctor:test trace:test
-                     #   bundle:test lcp-attribution:test)
+                     #   bundle:test lcp-attribution:test page-tools:test invariants:test)
 node skills/browsergnome/scripts/stats.mjs --self-test   # same thing, directly
 ```
 
@@ -71,6 +73,10 @@ bundler stats ──bundle_stats.mjs───(stdout)──> {bundler,totalBytes
 
 run-state.json ──build_run_report.mjs──> report.html
 .bgn/ledger/*.md + assets/playbook.seed.json ──build_playbook.mjs──> .bgn/playbook.{md,json}
+graph.json + render-profile.json ──build_perf_map.mjs --renders──> perf-map.html (render overlay)
+page_tools.mjs  serve (provider script on 127.0.0.1, CORS) · loader (navigate_page initScript) ·
+                locate (component name → file:line) · total (re-renders gate value) — Page Tools,
+                see references/page-tools.md
 stats.mjs   gate arbiter (argv numbers in, JSON out): keep ⇔ improvement > max(minEffect, k·pooledStdDev)
 doctor.mjs  preflight: MCP pin check, stack detection, git state, `--init` bootstraps .bgn/
 ```
@@ -82,8 +88,8 @@ writes a ledger entry or `run-state.json`, the agent does, from `assets/ledger.t
 
 Two conventions hold across the real file/stdout handoffs:
 
-- **CLI guard.** `trace_metrics.mjs` and `bundle_stats.mjs` are imported by `lcp_attribution.mjs`,
-  so their CLI is gated on `import.meta.url === pathToFileURL(process.argv[1]).href`. Preserve it on
+- **CLI guard.** `trace_metrics.mjs` and `bundle_stats.mjs` are imported by `lcp_attribution.mjs`
+  (and `page_tools.mjs` by `doctor.mjs`/`build_perf_map.mjs`), so their CLI is gated on `import.meta.url === pathToFileURL(process.argv[1]).href`. Preserve it on
   any script that becomes importable. `perf_scan.mjs` has zero exports — CLI-only by design.
 - **Marker injection.** `build_perf_map` / `build_lcp_map` / `build_run_report` produce standalone
   HTML by `split().join()` on comment markers (`/*__GRAPH_DATA__*/`, `/*__LCP_DATA__*/`,
@@ -98,7 +104,13 @@ These have no single source of truth; an edit to one side silently breaks the ot
 
 - **chrome-devtools-mcp pin** appears in `.mcp.json`, `references/tools.md`'s ``**Pinned:
   `chrome-devtools-mcp@X.Y.Z`.**`` line, and `doctor.mjs`'s self-test fixtures. `checkVersionPin()`
-  compares the first two. Bump all three together; never use `@latest`.
+  compares the first two. Bump all three together; never use `@latest`. `.mcp.json` also passes
+  `--categoryExperimentalThirdParty` (Page Tools depends on it; `checkThirdPartyFlag()`).
+- **react-devtools-cdt-mcp pin** — exact version in `package.json` and `references/tools.md`'s
+  ``**Pinned: `react-devtools-cdt-mcp@X.Y.Z`.**`` line; `checkProviderPin()` compares them. A bump
+  means re-running the Page Tools verification in `references/page-tools.md` (the provider is
+  experimental and its output shape can change); `toClassicScript()`/`renderTotal()` throw on shape
+  drift rather than guessing.
 - **Stack-catalog filenames** under `references/frameworks|bundlers|hosts/` must match
   `doctor.mjs`'s `detectFramework`/`detectBundler`/`detectHost` return strings verbatim. Don't add a
   catalog file for a value no detector returns.
@@ -111,9 +123,9 @@ These have no single source of truth; an edit to one side silently breaks the ot
 - **Perf Map calibration** — `.github/workflows/pages.yml`'s `EXCALIDRAW_SHA` is pinned to the same
   commit as `references/perf-map.md`'s calibration note (527 modules / 16 hotspots). Bumping it means
   re-verifying the hotspot count.
-- **`depPulse` / `depPulseAutoApply`** must exist in both `SKILL.md`'s config schema table and
-  `doctor.mjs`'s `DEFAULT_CONFIG`. Same class as the chrome-devtools-mcp pin — nothing checks it, an
-  edit to one side silently breaks the other.
+- **`depPulse` / `depPulseAutoApply` / `pageTools`** must exist in both `SKILL.md`'s config schema
+  table and `doctor.mjs`'s `DEFAULT_CONFIG`. Same class as the chrome-devtools-mcp pin —
+  `check_invariants.mjs`'s `checkConfigKeys()` catches drift.
 - **`Guidance:` ids** in `references/knowledge/*.md` and `assets/playbook.seed.json` name
   `modern-web-guidance` guide ids. Key on the bare `id` — upstream category directories churn. A
   citation that stops resolving fails silently; nothing validates it.
@@ -133,8 +145,10 @@ These have no single source of truth; an edit to one side silently breaks the ot
 - **Knowledge-base status tiers** (`proven` / `documented` / `ungated hypothesis` / `dead end`) in
   `references/knowledge/` require a real measured before/after to upgrade. A citation is not a
   measurement.
-- Node ≥ 18, ESM throughout. The only runtime deps are `@babel/parser` + `@babel/traverse`, used
-  solely by `perf_scan.mjs`; the `SessionStart` hook installs them. Keep it that way.
+- Node ≥ 18, ESM throughout. The only runtime deps are `@babel/parser` + `@babel/traverse` (used
+  solely by `perf_scan.mjs`) and `react-devtools-cdt-mcp` at an exact version (never imported by a
+  script — `page_tools.mjs serve` reads its page script from `node_modules` and serves it to the target
+  page). The `SessionStart` hook installs them, and its guard checks for both. Keep it that way.
 - `.github/workflows/pages.yml`'s deploy step is **expected to fail while the repo is private**
   (GitHub Pages needs a public repo or a paid plan) — see the workflow's own header comment. Not a
   bug to fix; nothing to change there beyond the visibility flip.

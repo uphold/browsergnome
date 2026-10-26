@@ -21,12 +21,12 @@ handoff reuses the existing measure→gate loop.
   → measure→gate loop for provable findings). A dropped report alone is not enough.
 - **No new mechanical extractors.** The brain reads source and reasons; it does not write new AST
   detectors — that's `perf_scan.mjs`'s job, done elsewhere.
-- **Gate mapping is honest, not invented.** Web has four gate presets (`first-load`, `bundle-size`,
-  `interaction`, `layout-shift` — see `references/presets.md`) and no render-count gate. A finding
-  without a clean mapping to one of the four is **advisory** — say so plainly, don't force-fit it to a
-  preset that doesn't actually measure it. See
-  `architectural-perf-catalog.md`'s per-entry "Gate preset" field; most entries are advisory for
-  exactly this reason.
+- **Gate mapping is honest, not invented.** Web has five gate presets (`first-load`, `bundle-size`,
+  `interaction`, `layout-shift`, `re-renders` — see `references/presets.md`). `re-renders` is the
+  render-count gate and exists only when `.bgn/config.json`'s `pageTools` includes `react`. Without it,
+  render-cost findings are **advisory**. A finding without a clean mapping is **advisory**: say so
+  plainly, don't force-fit it to a preset that doesn't actually measure it. See
+  `architectural-perf-catalog.md`'s per-entry "Gate preset" field.
 
 ---
 
@@ -106,6 +106,20 @@ Before including a finding in the report:
 
 If a finding fails these checks, suppress it. Aim for ≤8 findings total; 3–5 is ideal.
 
+**Runtime evidence (React provider).** When `pageTools` includes `react`, the surviving render-cost
+findings (catalog entries 2, 5, 6, 9, 10) whose cost shows up on a real interaction get one Page Tools
+pass (`references/page-tools.md`). For each, profile that interaction once:
+`react_start_profiling` → trusted `click`/`type_text` → `react_stop_profiling` →
+`react_get_trace_overview` + the heaviest commit's `react_get_commit_report`. Attach:
+- commit count;
+- total components rendered (`page_tools.mjs total`);
+- the top components by self time with `file:line` from `page_tools.mjs locate`.
+
+For entry 6, also attach whether the component's uid survived the interaction, since a remount changes
+it. A finding the profile contradicts (the suspected component never renders during the interaction)
+is suppressed, not reported with a caveat. Evidence ranks findings; it isn't a gate result. Teardown
+runs once, after the last finding is profiled.
+
 ---
 
 ### Step 5 — Emit Ranked Hypotheses
@@ -119,7 +133,7 @@ Each finding in the report:
 **Catalog entry:** <number + title> (architectural-perf-catalog.md)
 **Confidence:** High / Medium
 **Expected cost:** <e.g. "ships an extra 40KB of client JS on every route below this layout">
-**Gate preset:** `first-load` / `bundle-size` / `interaction` — gate command:
+**Gate preset:** `first-load` / `bundle-size` / `interaction` / `re-renders` — gate command:
   `node "$BG/skills/browsergnome/scripts/stats.mjs" --baseline "..." --candidate "..." --min-effect <preset-floor> --direction lower --unit <ms|bytes>`
   *(or "Advisory — not auto-provable: <reason, per the catalog entry's honest gate mapping>")*
 
@@ -167,7 +181,8 @@ The user's selection drives Step 7. Skipped/unselected findings remain as
 
 For each finding the user chose to act on:
 
-**If the finding maps to a gate preset** (`first-load`, `bundle-size`, `interaction`):
+**If the finding maps to a gate preset** (`first-load`, `bundle-size`, `interaction`, `layout-shift`,
+or `re-renders` with the React provider):
 1. Propose and apply the fix (one atomic change).
 2. Enter the **existing measure→gate loop** (same as Autoresearch, see `SKILL.md`'s Autoresearch
    section for the exact drive sequence per preset): N-run baseline → apply fix → N-run candidate →
@@ -175,8 +190,8 @@ For each finding the user chose to act on:
    - **KEEP:** commit with measured delta; write a `- [x]` proven fact to `.bgn/perf-memory.md`.
    - **REVERT:** restore from pre-fix snapshot; write `- [ ] (hypothesis, disproved)`.
 
-**If the finding is advisory-tier** (no auto-gate — most catalog entries, honestly, since web has no
-render-count gate):
+**If the finding is advisory-tier** (no auto-gate — render-cost entries without the React provider,
+and the entries whose catalog mapping says advisory):
 1. Apply the fix.
 2. Surface it clearly: "Applied. This is an advisory finding — no gate can confirm it
    automatically. Please verify manually and confirm if it feels better."

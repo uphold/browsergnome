@@ -55,3 +55,7 @@ No framework-specific driver changes — `first-load`'s trace-based measurement 
 `LCPBreakdown`'s TTFB-vs-render-delay split routes to server-side work (route handlers, `fetch`
 caching) vs client-side work (RSC hydration, client bundle size) respectively — worth checking which
 side of that split a candidate fix targets before proposing it.
+
+## Page Tools dev server
+
+Start for a Page Tools pass (`references/page-tools.md`) with `npm run dev -- -p <port>` (`next dev`; Turbopack is the default dev bundler from Next.js 16, `--webpack` selects webpack). Both are measured: webpack reports component source as `webpack-internal:///(app-pages-browser)/./app/…`, which `normalizeSource` maps to a repo path. Turbopack reports a bundled chunk URL, so components are located by name with `page_tools.mjs locate`.

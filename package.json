@@ -31,12 +31,14 @@
     "bundle": "node skills/browsergnome/scripts/bundle_stats.mjs",
     "bundle:test": "node skills/browsergnome/scripts/bundle_stats.mjs --self-test",
     "lcp-attribution:test": "node skills/browsergnome/scripts/lcp_attribution.mjs --self-test",
+    "page-tools:test": "node skills/browsergnome/scripts/page_tools.mjs --self-test",
     "invariants": "node skills/browsergnome/scripts/check_invariants.mjs",
     "invariants:test": "node skills/browsergnome/scripts/check_invariants.mjs --self-test",
-    "test": "npm run stats:test && npm run playbook:test && npm run doctor:test && npm run trace:test && npm run bundle:test && npm run lcp-attribution:test && npm run invariants:test && npm run invariants"
+    "test": "npm run stats:test && npm run playbook:test && npm run doctor:test && npm run trace:test && npm run bundle:test && npm run lcp-attribution:test && npm run page-tools:test && npm run invariants:test && npm run invariants"
   },
   "dependencies": {
     "@babel/parser": "^7.29.7",
-    "@babel/traverse": "^7.29.7"
+    "@babel/traverse": "^7.29.7",
+    "react-devtools-cdt-mcp": "0.1.0"
   }
 }

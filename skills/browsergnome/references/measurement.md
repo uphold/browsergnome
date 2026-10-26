@@ -232,6 +232,8 @@ possible on a target with a very different baseline LCP than the one 30ms was ca
   separate, unmeasured question — likely still unrepresentative (no minification, dev-only checks),
   but not necessarily by two orders of magnitude. Building for production first and measuring that
   output is the safe default regardless of framework.
+  The one exception is `re-renders`, which gates on a component count rather than a timing and needs
+  data only a dev build reports — see "Observed noise — `re-renders`" below.
 - **Serve the production build compressed — universal, nothing framework-specific here.** The same
   Excalidraw build served uncompressed measured LCP 18,964ms; pre-gzipping the output and serving
   with gzip enabled brought it to the 7188ms baseline above. This is a pure static-file-serving fact
@@ -439,3 +441,41 @@ before trusting 67ms/10ms as anything but the shape of the result, not its value
 noise band doesn't clear its own 20% bar, the long-task-total fallback remains available in
 principle but needs its own scoping fix first (clip to a window around the interaction, not the
 whole trace) — that's a `trace_metrics.mjs` change, not something to invent ad hoc mid-run.
+
+## Observed noise — `re-renders` / total components rendered
+
+The metric is Σ `componentsChanged` across every commit of one fixed interaction, read from the React
+Page Tools provider's `react_get_trace_overview` (`page_tools.mjs total`). It is a count of
+what React rendered, not a duration. That is why it can gate on a dev server when timings can't:
+dev-mode overhead (unbundled modules, dev-only checks) changes how long a render takes, not which
+components render.
+
+Captured through `chrome-devtools-mcp@1.6.0 --categoryExperimentalThirdParty` with the real
+`page_tools.mjs` injection. Each capture was a fresh load, then `react_start_profiling`, then one
+trusted `click` on the filter input plus `type_text "alp"` (three keystrokes → three commits), then
+`react_stop_profiling`. The interaction drives a 200-row filtered list.
+
+| Target | Captures | Commits | Σ components | Spread |
+|---|---|---|---|---|
+| Vite 8 dev server, React 19 | 3 | 3 / 3 / 3 | 803 / 803 / 803 | 0 |
+| Next.js 16 dev, webpack, React 19 | 3 | 3 / 3 / 3 | 728 / 728 / 728 | 0 |
+| Next.js 16 dev, Turbopack, React 19 | 3 | 3 / 3 / 3 | 734 / 734 / 734 | 0 |
+| Vite dev, React 19, three `click`s on a counter button | 3 | 3 / 3 / 3 | 150 / 150 / 150 | 0 |
+
+Zero spread on every target, so `k·pooledStdDev` is 0 and the gate collapses to
+`improvement > minEffect`, with `minEffect: 0`: the comparison is strict, so a reduction of even one rendered component is a
+real reduction. The count is deterministic when nothing but the driven input changes state inside the
+capture window. Data fetches, timers, polling, or animation frames that resolve inside the window make
+it vary. That is why `re-renders` decides its gate shape per target, from 3 baseline captures
+(`presets.md`): identical → deterministic, one capture per side; otherwise → the N-run interleaved
+protocol with `k`. Totals differ between targets (728 vs 734 vs 803) because everything that
+renders counts: the surrounding page, and framework wrappers such as Next's router and its Suspense and
+Offscreen boundaries. Compare
+baseline and candidate on the same target and dev server, never across them.
+
+**Worked example — `memo` on a list row.** Same Vite target and interaction. Wrapping the list's `Row`
+component in `memo` (its `label` prop is a stable string) dropped the total from **803 to 469** in
+3 of 3 captures. The deterministic shape holds after the fix too. `stats.mjs --baseline "803"
+--candidate "469" --min-effect 0 --direction lower --unit components` → **KEEP** (improvement 334,
+noise band 0). Unchanged rows bail out of rendering, and the count shows exactly that.
+

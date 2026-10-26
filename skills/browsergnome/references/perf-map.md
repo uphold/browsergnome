@@ -86,6 +86,20 @@ structural and accumulated debt. Adjustable live via the `min debt` control. Non
 debt 2-6 render grey. `window.__perfmap` exposes `focusNode`, `applyThreshold`, and `rankMatches` for
 automated verification.
 
+## Render overlay (React provider)
+
+`build_perf_map.mjs <graph.json> --renders <render-profile.json>` merges a measured render profile onto
+the static graph. The profile is `[{file, renders, selfMs}]`: one entry per source file, aggregated
+from a Page Tools profiling pass (`page-tools.md`), with `file` from `page_tools.mjs locate`.
+`mergeRenders()` infers one scan-root prefix for the whole graph (`''`, or `src/` for a scan rooted at a
+subdirectory) by majority over the entries' longest matching ids, and matches a node only when `file`
+is that prefix plus its id. A profiled file the graph doesn't contain is reported, never attached to a
+same-named file elsewhere. A non-numeric `renders`/`selfMs` fails the build. It runs before the `/*__GRAPH_DATA__*/` injection, so the template needs no
+extra marker. Matching nodes show `N render(s) · X ms self` in the tooltip and detail panel; others
+render unchanged. Static debt still drives size and color, so the overlay shows where measured render
+work lands relative to the scanned hotspots. `selfMs` is a dev-build duration: it ranks components and
+is never a gate number.
+
 ## Import resolution (correctness, not cosmetics)
 
 Real web apps import almost everything through **path aliases** (`@/…`, `#/…`) or workspace packages

@@ -49,3 +49,35 @@ not before.
 
 **Do not use `lighthouse_audit` for the gate** — it explicitly excludes performance; route perf to
 `performance_start_trace`.
+
+## Third-party developer tools — enabled by `--categoryExperimentalThirdParty`
+
+`.mcp.json` passes `--categoryExperimentalThirdParty`, which adds two tools:
+
+- `list_3p_developer_tools` — no parameters; lists the tool groups the selected page has registered.
+  The listing is also appended to `navigate_page`'s response when the page changes.
+- `execute_3p_developer_tool` → `toolName` · `params` — **`params` is a JSON-stringified object**
+  (`"{\"uid\":\"r2\"}"`); passing an object fails input validation.
+
+Pages register tools through the `devtoolstooldiscovery` event. browsergnome's Page Tools layer injects
+provider scripts that do this — protocol in `references/page-tools.md`.
+
+**Pinned: `react-devtools-cdt-mcp@0.1.0`.** Exact version in this plugin's `package.json`, installed
+by the `SessionStart` hook. Its `react` group, every tool returning a plain object or `{error}`:
+
+| Tool | Params | Returns |
+|---|---|---|
+| `react_get_component_tree` | `depth?` (default 20), `rootUid?` | `{nodes:[{uid, type, name, key, firstChild, nextSibling}]}` |
+| `react_find_components` | `name`, `rootUid?`, `page?`, `pageSize?` | `{page, pageSize, totalCount, totalPages, results:[…node]}` |
+| `react_get_component_by_uid` | `uid`, `includeHooks?` | `{uid, type, name, key?, props?, hooks?}` |
+| `react_get_component_by_dom_element` | `element` (object — a DOM element reference) | the host component for that node |
+| `react_get_parent_stack` | `uid` | where the component is mounted |
+| `react_get_owner_stack` | `uid` | the components that created it in their JSX |
+| `react_get_owner_stack_trace` | `uid` | the owner stack as a stack trace |
+| `react_get_component_source` | `uid` | `{source:{name, fileName, line, column}}` — `line` is in the dev server's transformed output; use `page_tools.mjs locate` for the original line |
+| `react_start_profiling` | `traceName?` | `{status:"started"}` |
+| `react_stop_profiling` | — | `{status:"stopped", traceName, commits}` |
+| `react_get_trace_overview` | `traceName` | `[{commit, committedAt, renderDuration, layoutDuration, passiveDuration, componentsChanged}]` |
+| `react_get_commit_report` | `traceName`, `commitIndex` | `{committedAt, priority, renderDuration, layoutDuration, passiveDuration, components:[{uid, name, type, actualDuration, selfDuration}]}` sorted by `actualDuration` desc |
+
+Source locations, owner stacks, and profiling data exist only in development builds of React.
