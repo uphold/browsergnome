@@ -51,8 +51,9 @@ function main() {
     process.exit(1);
   }
 
-  // Escape </script> so it can't close the script block if it appears in data values
-  const safeData = rawData.replace(/<\/script>/gi, '<\\/script>');
+  // Data lands inside a <script> block: a raw `<` in any value (agent-written run state) can form `</script`
+  // or `<!--<script` and end or derail it. `\u003c` parses back to the same character.
+  const safeData = rawData.replace(/</g, '\\u003c');
   const [before, after] = template.split(DATA_MARKER);
   const out = before + safeData + after;
 

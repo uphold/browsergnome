@@ -21,9 +21,11 @@
  */
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import { checkVersionPin, checkProviderPin, checkThirdPartyFlag } from './doctor.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -165,6 +167,26 @@ function main() {
   const calibration = checkPerfMapCalibration(pagesYmlText, perfMapMdText);
   report('Perf Map calibration SHA (pages.yml <-> perf-map.md)', calibration.ok,
     calibration.ok ? calibration.workflowSha.slice(0, 8) : `workflow=${calibration.workflowSha ?? '?'} docs=${calibration.docsSha ?? '?'}`);
+
+  // 5. HTML builders escape every `<` in the data they inject into a <script> block
+  const HOSTILE = '</script><!--<script>';
+  const ESCAPED = HOSTILE.replace(/</g, '\\u003c');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bgn-escape-'));
+  const builders = [
+    ['build_perf_map.mjs', { nodes: [{ id: HOSTILE, label: HOSTILE }], links: [] }],
+    ['build_lcp_map.mjs', { url: HOSTILE, nodes: [{ class: 'module', label: HOSTILE, ms: 1, confidence: 'measured' }] }],
+    ['build_run_report.mjs', { target: HOSTILE, iterations: [] }],
+  ];
+  for (const [script, data] of builders) {
+    const inFile = path.join(tmp, 'in.json');
+    const outFile = path.join(tmp, 'out.html');
+    fs.writeFileSync(inFile, JSON.stringify(data));
+    // cwd = tmp: no package.json/.bgn there, so build_lcp_map resolves no prod URL and stays offline
+    const run = spawnSync(process.execPath, [path.join(repoRoot, 'skills/browsergnome/scripts', script), inFile, '--out', outFile], { cwd: tmp, encoding: 'utf8' });
+    const ok = run.status === 0 && fs.readFileSync(outFile, 'utf8').includes(ESCAPED);
+    report(`${script} escapes \`<\` in injected data`, ok, ok ? undefined : run.stderr.trim() || 'hostile payload not escaped');
+  }
+  fs.rmSync(tmp, { recursive: true, force: true });
 
   console.log(`\n  ${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);

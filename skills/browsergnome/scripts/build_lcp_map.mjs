@@ -152,14 +152,11 @@ async function main() {
     process.exit(1);
   }
 
-  // The payload is embedded inside a <script> block, and JSON.stringify does not escape "/".
-  // Node labels are remote resource URLs taken straight from the Chrome trace (and `meta.url` is
-  // the traced navigation URL), so measuring a site whose URL contains `</script>` would otherwise
-  // close the script element and execute attacker-chosen script when the report is opened. This
-  // report is published to GitHub Pages, so escape before injecting.
+  // Data lands inside a <script> block: a raw `<` in any value (bundle module/chunk names, URLs) can form `</script`
+  // or `<!--<script` and end or derail it. `\u003c` parses back to the same character.
   const html = template
     .split(LIB_MARKER).join(lib)
-    .split(DATA_MARKER).join(dataJson.replace(/<\/(script)/gi, '<\\/$1'));
+    .split(DATA_MARKER).join(dataJson.replace(/</g, '\\u003c'));
 
   fs.writeFileSync(outFile, html);
   const outAbs = path.resolve(outFile);

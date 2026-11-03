@@ -95,8 +95,9 @@ Two conventions hold across the real file/stdout handoffs:
   HTML by `split().join()` on comment markers (`/*__GRAPH_DATA__*/`, `/*__LCP_DATA__*/`,
   `/*__RUN_DATA__*/`, `/*__FORCE_GRAPH_LIB__*/`) in `assets/*.template.html`, deliberately not regex
   (the 1.3 MB vendored `assets/3d-force-graph.min.js` could match one). Renaming a marker without
-  updating its builder fails loudly — keep it that way. Only `build_run_report.mjs` escapes
-  `</script>` in injected data; the other two inject raw JSON/text into a `<script>` block.
+  updating its builder fails loudly — keep it that way. All three replace every `<` in the
+  injected data with `\u003c` (blocks `</script` and `<!--<script` breakout); `check_invariants.mjs`
+  builds each one from a hostile payload to keep it that way.
 
 ## Cross-file invariants
 
