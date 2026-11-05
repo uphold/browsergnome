@@ -1,6 +1,6 @@
 {
   "name": "browsergnome",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "type": "module",
   "description": "The autonomous JS web performance engineer. Propose → measure → keep/revert loop, LCP Attribution Map, and per-repo performance memory.",
   "author": {
