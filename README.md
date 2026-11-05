@@ -1,6 +1,6 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/banner-dark.png">
-  <img src="docs/banner-light.png" alt="browsergnome — the autonomous JS web performance engineer">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/banner-dark.svg">
+  <img src="docs/banner-light.svg" alt="browsergnome — the autonomous JS web performance engineer">
 </picture>
 
 [![CI](https://github.com/uphold/browsergnome/actions/workflows/ci.yml/badge.svg)](https://github.com/uphold/browsergnome/actions/workflows/ci.yml)
@@ -170,19 +170,28 @@ green-lit goes through the same measure→gate loop as every other fix.
 (commit) or revert (restore from snapshot). Git is the memory that makes auto-revert possible — nothing
 is deleted, every candidate is a snapshot away from its prior state.
 
-<img src="docs/diagrams/loop.svg" alt="The loop: propose, measure N times, gate, keep or revert, looping back">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/loop-dark.svg">
+  <img src="docs/diagrams/loop-light.svg" alt="The loop: propose, measure N times, gate, keep or revert, looping back">
+</picture>
 
 **The gate, on real data.** A fix has to clear both an absolute floor and the measurement noise, not
 just look better on one run. Ten real LCP captures against an unchanged nextjs.org — the noise band
 here is where `first-load`'s `minEffect: 30ms` / `k: 2` came from.
 
-<img src="docs/diagrams/gate.svg" alt="The gate on real data: ten LCP captures against nextjs.org, mean 942.4ms, noise band plus or minus 30.35ms">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/gate-dark.svg">
+  <img src="docs/diagrams/gate-light.svg" alt="The gate on real data: ten LCP captures against nextjs.org, mean 942.4ms, noise band plus or minus 30.35ms">
+</picture>
 
 **Warmup discard.** Three real captures against the same unchanged page — one cold-cache run inflates
 stddev 59.9ms → 2.9ms once discarded, a ~20× tighter noise band from dropping a single sample. That's
 why `warmupDiscard` defaults on.
 
-<img src="docs/diagrams/warmup.svg" alt="Warmup discard: three real LCP captures, one cold-cache outlier, dropping it tightens stddev from 59.9ms to 2.9ms">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/warmup-dark.svg">
+  <img src="docs/diagrams/warmup-light.svg" alt="Warmup discard: three real LCP captures, one cold-cache outlier, dropping it tightens stddev from 59.9ms to 2.9ms">
+</picture>
 
 ## CI Autopilot
 
