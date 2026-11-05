@@ -252,7 +252,7 @@ Uses the same measure-before-you-change discipline as
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, tests, and code style, and
 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community standards. Agent-facing instructions live in
-[AGENTS.md](AGENTS.md) (or [CLAUDE.md](CLAUDE.md) for Claude Code specifically).
+[AGENTS.md](AGENTS.md) (or [CLAUDE.md](.claude/CLAUDE.md) for Claude Code specifically).
 
 ## License
 

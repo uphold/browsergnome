@@ -1,7 +1,7 @@
 # AGENTS.md
 
 Vendor-neutral instructions for coding agents working in this repo. Claude Code should read
-`CLAUDE.md` instead — it has the same facts plus Claude-specific wiring (skills, hooks, MCP setup).
+`.claude/CLAUDE.md` instead — it has the same facts plus Claude-specific wiring (skills, hooks, MCP setup).
 
 ## What this repo is
 
@@ -68,5 +68,5 @@ These have no single source of truth; an edit to one side silently breaks the ot
 
 ## Full detail
 
-`CLAUDE.md` in this same directory carries everything above plus the script pipeline diagram and
+`.claude/CLAUDE.md` carries everything above plus the script pipeline diagram and
 Claude-Code-specific wiring (skills, hooks, MCP). Read it for anything this file doesn't cover.

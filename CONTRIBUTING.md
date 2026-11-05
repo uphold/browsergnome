@@ -48,7 +48,7 @@ meaning; comment only where the *why* isn't otherwise recoverable (a non-obvious
 verified-against-a-real-capture provenance note, a deliberate simplification). See any script under
 `skills/browsergnome/scripts/` for the house style.
 
-Read `CLAUDE.md` before changing runtime behavior — it documents the cross-file invariants (the
+Read `.claude/CLAUDE.md` before changing runtime behavior — it documents the cross-file invariants (the
 chrome-devtools-mcp version pin, the stack-catalog filenames, the perf-map calibration numbers) that
 have no other single source of truth and silently drift if only one side of an edit lands.
 
