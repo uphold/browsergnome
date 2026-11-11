@@ -4,6 +4,8 @@
 #     build_perf_map --renders from the render-overlay fixture pair
 #   - JSON validation of all plugin manifests
 #   - official plugin manifest validation (claude plugin validate --strict)
+#   - every `Guidance:` id resolves at the pinned modern-web-guidance (the one networked step:
+#     it downloads the pinned package once)
 #
 # The live path (chrome-devtools-mcp / real browser / MCP runtime) cannot be CI-tested
 # because it requires a running Chrome instance and an active Claude Code session.
@@ -16,13 +18,17 @@ on:
   push:
     branches: [master]
 
+# Read-only token: the guidance step runs a third-party npm package, and checkout persists the token.
+permissions:
+  contents: read
+
 jobs:
   ci:
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
-        node-version: [18.x, 20.x]
+        node-version: [22.x, 24.x]
 
     steps:
       - name: Checkout
@@ -59,6 +65,23 @@ jobs:
           test -s /tmp/report.html      || (echo "report.html is missing or empty"       && exit 1)
           test -s /tmp/perf-map.html    || (echo "perf-map.html is missing or empty"     && exit 1)
           grep -q '"renders":3' /tmp/perf-map.html || (echo "perf-map.html is missing the render overlay" && exit 1)
+
+      - name: Guidance ids resolve at the pinned modern-web-guidance
+        if: matrix.node-version == '22.x'
+        env:
+          DISABLE_TELEMETRY: 1
+        run: |
+          pin=$(grep -oE 'Pinned: `modern-web-guidance@[0-9]+\.[0-9]+\.[0-9]+' skills/browsergnome/references/tools.md | cut -d@ -f2)
+          test -n "$pin" || { echo "::error::no modern-web-guidance pin in references/tools.md"; exit 1; }
+          ids=$( { grep -rhoE '^Guidance: [a-z0-9-]+' skills/browsergnome/references/knowledge | cut -d' ' -f2
+                   grep -oE '"guidance": "[a-z0-9-]+"' skills/browsergnome/assets/playbook.seed.json | cut -d'"' -f4; } | sort -u)
+          test -n "$ids" || { echo "::error::found no Guidance ids to check"; exit 1; }
+          fail=0
+          for id in $ids; do
+            if npx --yes "modern-web-guidance@$pin" retrieve "$id" > /dev/null 2>&1; then echo "  ok  $id"
+            else echo "::error::Guidance id '$id' does not resolve at modern-web-guidance@$pin"; fail=1; fi
+          done
+          exit $fail
 
       - name: Validate JSON files
         run: |

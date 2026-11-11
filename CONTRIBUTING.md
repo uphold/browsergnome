@@ -13,7 +13,7 @@ cd browsergnome
 npm install   # @babel/parser + @babel/traverse, used only by perf_scan.mjs
 ```
 
-No build step. Node ≥ 18, ESM throughout.
+No build step. Node ≥ 22, ESM throughout.
 
 ## Running the tests
 
@@ -25,7 +25,7 @@ npm run invariants       # the invariants check itself (not a self-test — asse
                           #   files agree; see "Cross-file invariants" below)
 ```
 
-`ci.yml` runs this same `npm test` chain on Node 18 and 20 for every PR and push to `master` — the
+`ci.yml` runs this same `npm test` chain on Node 22 and 24 for every PR and push to `master` — the
 per-script `selfTest()`s aren't an untested side-channel, they gate merges.
 
 Each testable script carries its own `selfTest()` behind `--self-test`, with a local pass/fail-tally
@@ -54,11 +54,11 @@ have no other single source of truth and silently drift if only one side of an e
 
 `npm run invariants` (part of `npm test`) mechanically checks the chrome-devtools-mcp pin and its
 `--categoryExperimentalThirdParty` flag, the `react-devtools-cdt-mcp` pin, the stack-catalog filenames,
-the `depPulse`/`depPulseAutoApply`/`pageTools` config keys, and the Perf Map calibration SHA, and fails
-the build on drift. Two invariants stay a manual review responsibility,
-because a script can't meaningfully check them: the "one confident, unhedged voice" rule across
-product docs is editorial, not mechanical; and the `Guidance:` ids resolve against the external
-`modern-web-guidance` catalog, which isn't installed in CI.
+the `depPulse`/`depPulseAutoApply`/`pageTools` config keys, the Perf Map calibration SHA, and the
+`modern-web-guidance` pin, and fails the build on drift. A separate `ci.yml` step retrieves every
+`Guidance:` id at that pin and fails on any that don't resolve. One invariant stays a manual review
+responsibility: the "one confident, unhedged voice" rule across product docs is editorial, not
+mechanical.
 
 ## Proposing a change
 

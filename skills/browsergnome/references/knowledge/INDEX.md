@@ -49,12 +49,12 @@ Autoresearch may propose anything here regardless of status, but everything stil
 Some entries carry a 5th line, `Guidance: <id>`, naming a `modern-web-guidance`
 guide id (bare id, e.g. `optimize-image-priority` — never `category/id`, since
 upstream category directories churn). `GoogleChrome/modern-web-guidance` ships
-as a Claude Code plugin (`/plugin marketplace add GoogleChrome/modern-web-guidance`
-then `/plugin install modern-web-guidance@googlechrome`); Doctor reports whether
-it's installed.
+as a Claude Code plugin (`claude plugin install modern-web-guidance@claude-plugins-official`);
+Doctor reports whether it's installed. The catalog is pinned in `references/tools.md`, and
+CI fails if any cited id stops resolving at that pin.
 
-- **Present** — retrieve the cited guide with `npx modern-web-guidance@latest
-  retrieve "<id>"` (or the plugin's equivalent skill call) when reasoning about
+- **Present** — retrieve the cited guide with `DISABLE_TELEMETRY=1 npx --yes
+  modern-web-guidance@1.0.0 retrieve "<id>"` (or the plugin's equivalent skill call) when reasoning about
   that entry, and treat its "Fallback strategies"/"Fallback strategy" section
   — a Baseline availability line (`Newly available` / `Widely available` /
   `has limited availability`, with a `Baseline since YYYY-MM-DD` date where
@@ -62,8 +62,8 @@ it's installed.
   `Unsupported in: ...` line — as browser-support fact, independent of the
   gate. Exact wording varies per guide; don't assume a fixed template.
 - **Absent** — proceed on the local entry alone, note `guidance <id> not
-  installed` on the finding, and nudge `/plugin install
-  modern-web-guidance@googlechrome`.
+  installed` on the finding, and nudge `claude plugin install
+  modern-web-guidance@claude-plugins-official`.
 - A citation is not a measurement — it never upgrades an entry's tier. An
   entry cited to `modern-web-guidance` is `documented` at most; the legend
   above already warns against letting "we found a doc for it" become `proven`,

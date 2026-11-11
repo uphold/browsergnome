@@ -81,3 +81,15 @@ by the `SessionStart` hook. Its `react` group, every tool returning a plain obje
 | `react_get_commit_report` | `traceName`, `commitIndex` | `{committedAt, priority, renderDuration, layoutDuration, passiveDuration, components:[{uid, name, type, actualDuration, selfDuration}]}` sorted by `actualDuration` desc |
 
 Source locations, owner stacks, and profiling data exist only in development builds of React.
+
+## modern-web-guidance — pinned version
+
+**Pinned: `modern-web-guidance@1.0.0`.** The catalog that `Guidance:` ids in `references/knowledge/`
+and `assets/playbook.seed.json` resolve against. Retrieve a guide with
+`DISABLE_TELEMETRY=1 npx --yes modern-web-guidance@1.0.0 retrieve "<id>"` — the package sends
+anonymous usage telemetry by default, and the env var keeps the target repo's runs out of it. It
+requires Node ≥ 22 and reads guides from local files, so it works offline once installed. An unknown
+id exits 1. Output over ~9.5 KB sent to a pipe is written to `$TMPDIR/mwg-guide-*.md` instead, with
+only a `saved to <path>` pointer on stdout. Every `modern-web-guidance@` reference in `SKILL.md` and
+`references/knowledge/INDEX.md` must match this pin (`check_invariants.mjs`), and `ci.yml` retrieves
+every cited id at it.

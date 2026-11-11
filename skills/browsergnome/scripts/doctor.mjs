@@ -432,7 +432,7 @@ function main() {
   console.log(`\nbrowsergnome doctor — ${repo}\n`);
 
   const node = process.versions.node;
-  console.log(`  ${ok(parseInt(node, 10) >= 18)} node ${node} (>=18 required)`);
+  console.log(`  ${ok(parseInt(node, 10) >= 22)} node ${node} (>=22 required — modern-web-guidance needs it)`);
 
   // ── chrome-devtools-mcp pin consistency ─────────────────────────────────
   const mcpJsonPath = path.join(pluginRoot, '.mcp.json');
@@ -454,7 +454,7 @@ function main() {
   console.log(`        re-verify against references/tools.md rather than assuming the pin still holds.`);
 
   const mwgInstalled = sh(`find "${os.homedir()}/.claude/plugins" -path "*/modern-web-guidance*" -name "*.md" -maxdepth 6 2>/dev/null | head -1`);
-  console.log(`  ${mwgInstalled ? ok(true) : warn} modern-web-guidance${mwgInstalled ? '' : ' — install: /plugin marketplace add GoogleChrome/modern-web-guidance && /plugin install modern-web-guidance@googlechrome'}`);
+  console.log(`  ${mwgInstalled ? ok(true) : warn} modern-web-guidance${mwgInstalled ? '' : ' — install: claude plugin install modern-web-guidance@claude-plugins-official'}`);
 
   // ── Git state ─────────────────────────────────────────────────────────────
   const gitInsideWorkTree = sh('git rev-parse --is-inside-work-tree') === 'true';

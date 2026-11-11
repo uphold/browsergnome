@@ -64,7 +64,7 @@ These have no single source of truth; an edit to one side silently breaks the ot
 - **Knowledge-base status tiers** (`proven` / `documented` / `ungated hypothesis` / `dead end`) in
   `references/knowledge/` require a real measured before/after to upgrade. A citation is not a
   measurement.
-- Node ≥ 18, ESM throughout. The only runtime deps are `@babel/parser` + `@babel/traverse`.
+- Node ≥ 22, ESM throughout. The only runtime deps are `@babel/parser` + `@babel/traverse`.
 
 ## Full detail
 

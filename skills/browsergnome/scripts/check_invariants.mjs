@@ -12,8 +12,10 @@
  * Deliberately NOT covered here — see CONTRIBUTING.md:
  *   - "one confident, unhedged voice" across product docs — editorial, not
  *     mechanical.
- *   - `Guidance:` ids resolve against the external modern-web-guidance
- *     catalog, which isn't installed in CI — a check here would be theatre.
+ *   - `Guidance:` ids resolving against the modern-web-guidance catalog —
+ *     that needs the network, so it's a ci.yml step, not part of this
+ *     offline check. This file only keeps the pin those retrievals use
+ *     consistent (checkGuidancePin).
  *
  * Usage:
  *   node check_invariants.mjs       # run the real checks against this repo, exit 0/1
@@ -80,6 +82,20 @@ export function checkPerfMapCalibration(pagesYmlText, perfMapMdText) {
   return { ok: workflowSha != null && docsSha != null && workflowSha.startsWith(docsSha), workflowSha, docsSha };
 }
 
+/**
+ * Every `modern-web-guidance@X` in the docs must match references/tools.md's
+ * **Pinned: `modern-web-guidance@X.Y.Z`.** line — no `@latest`, no stale pin.
+ * @param {string} toolsMdText
+ * @param {string[]} docTexts - SKILL.md, knowledge/INDEX.md
+ * @returns {{ok:boolean, pin:string|null, mismatched:string[]}}
+ */
+export function checkGuidancePin(toolsMdText, docTexts) {
+  const pin = toolsMdText.match(/\*\*Pinned: `modern-web-guidance@(\d+\.\d+\.\d+)`\.\*\*/)?.[1] ?? null;
+  const refs = docTexts.flatMap((t) => [...t.matchAll(/modern-web-guidance@([\w.-]+)/g)].map((m) => m[1]));
+  const mismatched = refs.filter((v) => v !== pin && v !== 'claude-plugins-official');
+  return { ok: pin != null && mismatched.length === 0, pin, mismatched };
+}
+
 // ── Self-test ────────────────────────────────────────────────────────────
 
 function selfTest() {
@@ -102,6 +118,12 @@ function selfTest() {
 
   check('checkPerfMapCalibration: agreement (short SHA is a prefix)', checkPerfMapCalibration('EXCALIDRAW_SHA: 4872083c044491b6d5c96ae134a75464f96d6831', '`4872083c`, 527 modules').ok, true);
   check('checkPerfMapCalibration: catches drift', checkPerfMapCalibration('EXCALIDRAW_SHA: deadbeef00000000000000000000000000000000', '`4872083c`, 527 modules').ok, false);
+
+  const mwgPin = '**Pinned: `modern-web-guidance@1.0.0`.**';
+  check('checkGuidancePin: agreement (install command ignored)', checkGuidancePin(mwgPin, ['npx modern-web-guidance@1.0.0 retrieve', 'install modern-web-guidance@claude-plugins-official']).ok, true);
+  check('checkGuidancePin: catches @latest', checkGuidancePin(mwgPin, ['npx modern-web-guidance@latest retrieve']).mismatched, ['latest']);
+  check('checkGuidancePin: catches a stale pin', checkGuidancePin(mwgPin, ['modern-web-guidance@0.9.0']).mismatched, ['0.9.0']);
+  check('checkGuidancePin: missing tools.md pin fails', checkGuidancePin('', []).ok, false);
 
   check('checkVersionPin (re-exported from doctor.mjs): still agrees', checkVersionPin('{"mcpServers":{"chrome-devtools":{"args":["chrome-devtools-mcp@1.6.0"]}}}', '**Pinned: `chrome-devtools-mcp@1.6.0`.**').agree, true);
 
@@ -167,6 +189,12 @@ function main() {
   const calibration = checkPerfMapCalibration(pagesYmlText, perfMapMdText);
   report('Perf Map calibration SHA (pages.yml <-> perf-map.md)', calibration.ok,
     calibration.ok ? calibration.workflowSha.slice(0, 8) : `workflow=${calibration.workflowSha ?? '?'} docs=${calibration.docsSha ?? '?'}`);
+
+  // 4b. modern-web-guidance pin
+  const indexMdText = read(path.join(repoRoot, 'skills/browsergnome/references/knowledge/INDEX.md'));
+  const mwg = checkGuidancePin(toolsMdText, [skillMdText, indexMdText]);
+  report('modern-web-guidance pin (references/tools.md <-> SKILL.md, knowledge/INDEX.md)', mwg.ok,
+    mwg.ok ? `@${mwg.pin}` : `pin=@${mwg.pin ?? '?'} mismatched=[${mwg.mismatched}]`);
 
   // 5. HTML builders escape every `<` in the data they inject into a <script> block
   const HOSTILE = '</script><!--<script>';
