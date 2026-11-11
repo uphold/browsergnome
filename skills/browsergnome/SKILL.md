@@ -207,7 +207,7 @@ check — it **cannot** verify the live tool surface, since that needs an actual
 returns an unexpected shape mid-run, that's the live-drift signal, not this check), git state (via
 `parseGitState` — four states: `usable`/`no-repo`/`no-commits`/`detached`), the three stack axes (framework/bundler/host — unknown on any axis is fine, falls back to
 the generic knowledge base), whether the `modern-web-guidance` plugin is installed (nudges
-`/plugin install modern-web-guidance@googlechrome` if not — see the Knowledge base section above), the
+`claude plugin install modern-web-guidance@claude-plugins-official` if not — see the Knowledge base section above), the
 Page Tools axis (providers detected from the target's `package.json` — `react` when it depends on
 `react-dom` — plus whether the provider package is installed, the target has a `dev` script, and
 `.mcp.json` passes `--categoryExperimentalThirdParty`), and target URL reachability if `--url` is
@@ -251,9 +251,10 @@ loop, condensed:
 3. **Diagnose.** Consult `references/knowledge/lcp.md` (routed by the trace's `LCPBreakdown` insight —
    TTFB-dominated vs render-delay-dominated point at different fixes). Pick the **single dominant**
    candidate fix — never stack fixes in one iteration. If it carries a `Guidance:` id, retrieve that
-   `modern-web-guidance` guide (`npx modern-web-guidance@latest retrieve "<id>"`, or the plugin's
-   equivalent skill call) when installed; otherwise proceed on the local entry and note
-   `guidance <id> not installed` on the finding. See `references/knowledge/INDEX.md`'s "Upstream
+   `modern-web-guidance` guide (`DISABLE_TELEMETRY=1 npx --yes modern-web-guidance@1.0.0 retrieve "<id>"`,
+   or the plugin's equivalent skill call) when installed; otherwise proceed on the local entry and note
+   `guidance <id> not installed` on the finding. A guide over ~9.5 KB prints only a `saved to <path>`
+   pointer — read that file, it is the guide. See `references/knowledge/INDEX.md`'s "Upstream
    guidance" section for the full contract.
 4. **Propose + apply.** One atomic change. Before applying, snapshot each file about to change.
    Check the touched paths against `measurement.md`'s rebuild-fallback list — interleaved (`ABABAB`)

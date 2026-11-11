@@ -9,7 +9,7 @@
 [![Forks](https://img.shields.io/github/forks/uphold/browsergnome?color=5b6472)](https://github.com/uphold/browsergnome/network/members)
 [![Issues](https://img.shields.io/github/issues/uphold/browsergnome?color=5b6472)](https://github.com/uphold/browsergnome/issues)
 [![Live demo](https://img.shields.io/badge/demo-live-E45FD8)](https://uphold.github.io/browsergnome/)
-[![Node >=18](https://img.shields.io/badge/node-%3E%3D18-5b6472)](package.json)
+[![Node >=22](https://img.shields.io/badge/node-%3E%3D22-5b6472)](package.json)
 <!-- npm version / downloads: uncomment once published — not on npm yet, see Install.
 [![npm version](https://img.shields.io/npm/v/browsergnome?color=E45FD8)](https://www.npmjs.com/package/browsergnome)
 [![npm downloads](https://img.shields.io/npm/dm/browsergnome?color=5b6472)](https://www.npmjs.com/package/browsergnome)
@@ -68,7 +68,7 @@ capture, plus the live run report.
 /plugin install browsergnome
 ```
 
-**Prerequisites:** Node ≥ 18 · `chrome-devtools-mcp` · clean git tree.
+**Prerequisites:** Node ≥ 22 · `chrome-devtools-mcp` · clean git tree.
 
 **Scripts need `npm install`:** The SessionStart hook does this automatically inside a Claude session. For by-hand or CI use, run `npm install` in the plugin directory first.
 
@@ -208,7 +208,7 @@ trusting the gate on CI hardware.
 
 ## Requirements
 
-- **Node ≥ 18, ESM throughout.**
+- **Node ≥ 22, ESM throughout.**
 - **Measurement is delegated** to [`chrome-devtools-mcp`](https://github.com/ChromeDevTools/chrome-devtools-mcp)
   (pinned in `.mcp.json`, launched with `--categoryExperimentalThirdParty`) — never called via `@latest`.
 - **Page Tools** (React targets) uses the pinned `react-devtools-cdt-mcp` dependency, installed by the
