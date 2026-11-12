@@ -48,7 +48,7 @@ gzipped captures in `assets/`; `stats.mjs`/`doctor.mjs`/`build_playbook.mjs` tes
 inline fixtures. Adding a test means extending the relevant `selfTest()`, not adding a file. Keep
 `package.json`'s `test` script in sync when a new `*:test` is added.
 
-CI (`.github/workflows/ci.yml`, Node 18 + 20) runs `npm test` plus two things `npm test` does not:
+CI (`.github/workflows/ci.yml`, Node 22 + 24) runs `npm test` plus two things `npm test` does not:
 
 ```bash
 # offline smoke chain
@@ -128,8 +128,12 @@ These have no single source of truth; an edit to one side silently breaks the ot
   table and `doctor.mjs`'s `DEFAULT_CONFIG`. Same class as the chrome-devtools-mcp pin —
   `check_invariants.mjs`'s `checkConfigKeys()` catches drift.
 - **`Guidance:` ids** in `references/knowledge/*.md` and `assets/playbook.seed.json` name
-  `modern-web-guidance` guide ids. Key on the bare `id` — upstream category directories churn. A
-  citation that stops resolving fails silently; nothing validates it.
+  `modern-web-guidance` guide ids. Key on the bare `id` — upstream category directories churn.
+  `ci.yml` retrieves every cited id at the pinned version and fails on any that don't resolve.
+- **modern-web-guidance pin** — `references/tools.md`'s ``**Pinned: `modern-web-guidance@X.Y.Z`.**``
+  line is the source; every `modern-web-guidance@` in `SKILL.md` and `references/knowledge/INDEX.md`
+  must match it (`checkGuidancePin()`), and `ci.yml` reads it from there. It needs Node ≥ 22, which
+  is why that's the floor.
 
 ## Project rules
 
@@ -146,7 +150,7 @@ These have no single source of truth; an edit to one side silently breaks the ot
 - **Knowledge-base status tiers** (`proven` / `documented` / `ungated hypothesis` / `dead end`) in
   `references/knowledge/` require a real measured before/after to upgrade. A citation is not a
   measurement.
-- Node ≥ 18, ESM throughout. The only runtime deps are `@babel/parser` + `@babel/traverse` (used
+- Node ≥ 22, ESM throughout. The only runtime deps are `@babel/parser` + `@babel/traverse` (used
   solely by `perf_scan.mjs`) and `react-devtools-cdt-mcp` at an exact version (never imported by a
   script — `page_tools.mjs serve` reads its page script from `node_modules` and serves it to the target
   page). The `SessionStart` hook installs them, and its guard checks for both. Keep it that way.
