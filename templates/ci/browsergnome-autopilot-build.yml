@@ -12,6 +12,9 @@ name: browsergnome perf autopilot (weekly)
 #      Pinning to a tag is recommended: https://github.com/uphold/browsergnome.git@v0.2.0
 #   5. Tune cron, top_findings, max_iters, and optionally set vars.BROWSERGNOME_GOAL for a
 #      fixed custom goal on every scheduled run (blank = weekly top-X default).
+#   6. Set setup-node's node-version to what your repo builds on (or use node-version-file:
+#      .nvmrc). 22 is the default because modern-web-guidance needs Node >= 22; below that,
+#      findings run without their guidance citations.
 #
 # See templates/ci/README.md for the full adoption guide.
 

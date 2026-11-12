@@ -18,6 +18,9 @@ name: browsergnome perf autopilot — browser (weekly)
 #   6. Characterize k/minEffect ON THIS RUNNER before trusting the gate here (see "Runner noise
 #      characterization" below) and commit the result to .bgn/config.json — do not inherit the
 #      laptop-derived defaults in references/measurement.md as-is.
+#   7. Set setup-node's node-version to what your repo builds on (or use node-version-file:
+#      .nvmrc). 22 is the default because modern-web-guidance needs Node >= 22; below that,
+#      findings run without their guidance citations.
 #   7. Tune cron, top_findings, max_iters, preset. Set vars.BROWSERGNOME_GOAL for a fixed goal.
 #
 # See templates/ci/README.md for the full adoption guide.

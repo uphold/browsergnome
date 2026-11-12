@@ -47,6 +47,10 @@ cp browsergnome-autopilot-build.yml .github/workflows/
 
 A PR will appear on your repo (or a clean exit in the logs if no fix cleared the gate).
 
+Both templates set up Node 22, which `modern-web-guidance` needs. If your repo builds on another
+version, change `node-version` (or use `node-version-file: .nvmrc`); below 22, findings run without
+their guidance citations.
+
 ---
 
 ## Quickstart (browser)

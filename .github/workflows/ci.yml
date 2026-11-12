@@ -73,14 +73,15 @@ jobs:
         run: |
           pin=$(grep -oE 'Pinned: `modern-web-guidance@[0-9]+\.[0-9]+\.[0-9]+' skills/browsergnome/references/tools.md | cut -d@ -f2)
           test -n "$pin" || { echo "::error::no modern-web-guidance pin in references/tools.md"; exit 1; }
-          ids=$( { grep -rhoE '^Guidance: [a-z0-9-]+' skills/browsergnome/references/knowledge | cut -d' ' -f2
-                   grep -oE '"guidance": "[a-z0-9-]+"' skills/browsergnome/assets/playbook.seed.json | cut -d'"' -f4; } | sort -u)
+          ids=$( { grep -rh '^Guidance:' skills/browsergnome/references/knowledge | sed 's/^Guidance:[[:space:]]*//'
+                   grep -oE '"guidance"[[:space:]]*:[[:space:]]*"[^"]*"' skills/browsergnome/assets/playbook.seed.json | cut -d'"' -f4; } | sort -u)
           test -n "$ids" || { echo "::error::found no Guidance ids to check"; exit 1; }
           fail=0
-          for id in $ids; do
-            if npx --yes "modern-web-guidance@$pin" retrieve "$id" > /dev/null 2>&1; then echo "  ok  $id"
+          while IFS= read -r id; do
+            if ! printf '%s' "$id" | grep -qE '^[a-z0-9-]+$'; then echo "::error::Guidance '$id' is not a bare modern-web-guidance id"; fail=1
+            elif npx --yes "modern-web-guidance@$pin" retrieve "$id" > /dev/null 2>&1; then echo "  ok  $id"
             else echo "::error::Guidance id '$id' does not resolve at modern-web-guidance@$pin"; fail=1; fi
-          done
+          done <<< "$ids"
           exit $fail
 
       - name: Validate JSON files
